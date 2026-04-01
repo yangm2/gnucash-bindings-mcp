@@ -1,0 +1,51 @@
+# Example gnucash-mcp-budgets.toml
+title = "Example construction project budgets"
+version = "1.0"
+currency = "USD"
+effective_date = "2026-04-01"
+
+[[professional_fees]]
+account = "Expenses:Architecture — Acme Architecture"
+contract_type = "fixed"
+contract_total = 42000.00
+notes = "AAI #101 + #102 per REV2"
+
+[[professional_fees]]
+account = "Expenses:Structural Engineering — Peak Structural"
+contract_type = "range"
+contract_low = 7000.00
+contract_high = 9000.00
+notes = "PSE proposal 10001"
+
+[[professional_fees]]
+account = "Expenses:MEP Consulting — Meridian MEP"
+contract_type = "fixed"
+contract_total = 2500.00
+notes = "Meridian MEP per proposal"
+
+[[professional_fees]]
+account = "Expenses:HVAC Engineering — Summit HVAC"
+contract_type = "fixed"
+contract_total = 5000.00
+notes = "Summit HVAC per work order"
+
+[[external_budgets]]
+account = "Expenses:Construction:Allowances"
+amount = 15000.00
+notes = "GC allowances not represented in native budget"
+
+[[external_budgets]]
+account = "Expenses:Construction:Temporary Fencing"
+amount = 1000.00
+notes = "One-off site cost"
+
+[rates]
+overtime_multiplier = 1.5
+
+[rates.material]
+overage_pct = 0.10
+
+[proxy]
+expose_resource = "gnucash://budget-extensions"
+validate_on_start = true
+hot_reload_sighup = true
