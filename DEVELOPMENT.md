@@ -72,16 +72,16 @@ natively. Converting to SQLite solely to satisfy piecash would lose these proper
 ### What ninetails-io has that this project plans to add
 
 - **Full transaction CRUD**: `update_transaction`, `delete_transaction`,
-  `void_transaction`, `unvoid_transaction` — added to Phase 1c below
+  `void_transaction`, `unvoid_transaction` — added to Phase 3 below
 - **Audit log as MCP tool**: `get_audit_log` exposing change history to Claude —
-  added to Phase 4 below
+  added to Phase 7 below
 - **Account CRUD**: `update_account`, `move_account`, `delete_account` — added
-  to Phase 1b below (via `book_*` tools)
+  to Phase 2 below (via `book_*` tools)
 
 ### What ninetails-io has that this project deliberately excludes
 
 - **GnuCash native budgets**: ninetails-io exposes GnuCash's budget feature;
-  this project now uses it too via the `budget_*` tools in Phase 1d — the original
+  this project now uses it too via the `budget_*` tools in Phase 4 — the original
   hardcoded ROM constants approach has been replaced with live GnuCash budgets
   that the GC can update as pricing evolves through pre-construction
 - **Scheduled transactions**: not applicable to a construction project with
@@ -119,11 +119,11 @@ can proceed with confidence. Each has a designated spike in Phase 0.
 | KU-4 | Does `hdiutil attach -readonly` on a `.sparsebundle` genuinely prevent writes at the kernel level, or does macOS GnuCash find a writable path? | Read-only guarantee is illusory; need alternative enforcement | Phase 0, Spike D |
 | KU-5 | Does `tmutil localsnapshot` work on a mounted sparsebundle volume (not the boot volume)? | Must use file-copy backup instead of APFS snapshots | Phase 0, Spike E |
 | KU-6 | Does the GnuCash Python binding `Session.save()` durably flush to the XML file on disk, or does it require `Session.end()`? | Data loss on MCP crash between save and end | **Answered by example scripts** — `save()` and `end()` are separate: `save()` flushes to disk (always required for file backend per Session class docstring); `end()` only releases the `.LCK` file. Data is durable after `save()` alone. Additional finding: `new_book_with_opening_balances.py` calls `session.save()` immediately after opening a new book, before any mutations, with a comment that skipping this early save caused corruption. Session manager must do the same. |
-| KU-7 | Does `open --wait-apps` in the zsh wrapper reliably block until the GnuCash process fully exits, including cleanup? | Premature detach of sparsebundle while GnuCash still holds file handles | Phase 2, GUI wrapper test |
+| KU-7 | Does `open --wait-apps` in the zsh wrapper reliably block until the GnuCash process fully exits, including cleanup? | Premature detach of sparsebundle while GnuCash still holds file handles | Phase 5, GUI wrapper test |
 | KU-8 | Does Claude Desktop's `streamable-http` connector accept a plain HTTP (non-TLS) connection to `localhost:8980` from a natively-running Swift proxy? | Must use HTTPS or an alternate registration mechanism | Phase 0, Spike F |
 | KU-9 | Does Claude Desktop's `streamable-http` MCP connector correctly bridge to CoWork's VM via the SDK passthrough layer? | CoWork cannot use GnuCash tools despite Claude Desktop connecting successfully | Phase 0, Spike F |
 | KU-10 | Does `__unlock_ledger__` tool reliably cause Claude to treat it as a mandatory initialization step, or does it get skipped? | Context about tool groups and conventions not loaded; Claude makes incorrect tool choices | Phase 1, integration test |
-| KU-11 | After Mac sleep/wake, does the pooled container handle held by the Swift proxy become stale (VM suspended/killed)? How does `ContainerAPIClient` signal this? | Proxy forwards request to a dead container; tool call hangs or returns garbage | Phase 2, Swift proxy integration |
+| KU-11 | After Mac sleep/wake, does the pooled container handle held by the Swift proxy become stale (VM suspended/killed)? How does `ContainerAPIClient` signal this? | Proxy forwards request to a dead container; tool call hangs or returns garbage | Phase 5, Swift proxy integration |
 
 ---
 
@@ -258,7 +258,7 @@ Expenses
   HVAC Engineering — Summit HVAC
   Permits and Fees
   Construction         ← placeholder parent; children created from GC budget
-  Change Orders        ← ECO tracking (see Phase 1d)
+  Change Orders        ← ECO tracking (see Phase 4)
 ```
 
 **`Expenses:Construction` children** are created during pre-construction when
@@ -523,7 +523,7 @@ gnucash-mcp snapshot  — trigger manual APFS snapshot without starting a sessio
 
 **Phased development plan for the Swift proxy:**
 
-*Phase 1 proxy (ships with Phase 2 of the main plan):*
+*Phase 1 proxy (ships with Phase 5 of the main plan):*
 - HTTP server on `localhost:8980`
 - Static tool catalog (all 21 tools compiled in)
 - Static resources (`gnucash://book-setup-guide`, `gnucash://vendor-guide`,
@@ -535,7 +535,7 @@ gnucash-mcp snapshot  — trigger manual APFS snapshot without starting a sessio
 - `start` / `stop` / `status` subcommands
 - Pre-session snapshot
 
-*Phase 2 proxy (optional, after Phase 4 of the main plan):*
+*Phase 2 proxy (optional, after Phase 7 of the main plan):*
 - Session-aware pool: issue `Mcp-Session-Id`, map sessions to container handles
 - Container kept warm for the duration of a Claude Desktop conversation
 - Pool drains on session termination (clean) or TTL (dirty disconnect)
@@ -1217,7 +1217,7 @@ T1.4.10 Kill process after save() but before end(): on restart, book opens
 ### M1.5 — Python dispatcher and tool structure
 
 **Context:** The MCP protocol layer (HTTP server, `tools/list`, static resources)
-lives in the Swift proxy (MC-9, M2.2). The Python container receives one
+lives in the Swift proxy (MC-9, M5.2). The Python container receives one
 JSON-RPC `tools/call` request on stdin, dispatches to the correct tool function,
 writes the response to stdout, and exits. No uvicorn, no FastMCP, no HTTP server.
 
@@ -1257,8 +1257,8 @@ HANDLERS = {
     "__unlock_ledger__":    read.unlock_ledger,
     "gnucash://vendors":    read.vendors_resource,  # dynamic resource
     # Tier 1 — write (core) added in M1.6
-    # Tier 1 — write (correction) added in Phase 1c
-    # Tier 2 — book/vendor tools added in Phase 1b
+    # Tier 1 — write (correction) added in Phase 3
+    # Tier 2 — book/vendor tools added in Phase 2
 }
 
 def dispatch(request: dict) -> dict:
@@ -1381,7 +1381,7 @@ T1.5.8  All read tools open and close a GnuCash session within the single dispat
         (no persistent session — MC-2)
 T1.5.9  Unknown tool name returns JSON-RPC error -32601, not a Python exception
 T1.5.10 Via Swift proxy: Claude Desktop shows gnucash-myproject connected (manual,
-        requires M2.2 complete; record in TEST_RESULTS.md)
+        requires M5.2 complete; record in TEST_RESULTS.md)
 T1.5.11 Via Swift proxy: Claude calls __unlock_ledger__ at session start (manual;
         resolves KU-10; record in TEST_RESULTS.md)
 T1.5.12 Via Swift proxy: CoWork can call get_project_summary() (manual;
@@ -1444,7 +1444,7 @@ T1.6.10 Post all known invoices from project documents:
 
 ---
 
-## Phase 1b — Book Management and Vendor Tools
+## Phase 2 — Book Management and Vendor Tools
 
 **Goal:** Claude can set up and maintain the chart of accounts and add new
 vendors/subcontractors as they are hired. These tools are used infrequently
@@ -1453,7 +1453,7 @@ Resource-based lazy context pattern validated in practice.
 
 **Prerequisites:** Phase 1 complete. MC-8 tool architecture confirmed working.
 
-### M1b.1 — Book setup tools
+### M2.1 — Book setup tools
 
 **Deliverables (`src/tools/book.py`):**
 
@@ -1515,26 +1515,26 @@ def book_delete_account(
 
 **Tests:**
 ```
-T1b.1.1  book_add_account creates account at correct path in hierarchy
-T1b.1.2  book_add_account with non-existent parent_path raises AccountNotFoundError
-T1b.1.3  book_add_account with invalid account_type raises ValueError
-T1b.1.4  book_add_account is idempotent: running with same args twice does not duplicate
-T1b.1.5  book_get_account_tree("Liabilities") returns all AP accounts
-T1b.1.6  book_verify_structure returns ok:true on a correctly-initialized book
-T1b.1.7  book_verify_structure returns missing accounts after one is removed (test fixture)
-T1b.1.8  book_set_opening_balance creates a balanced transaction with equity offset
-T1b.1.9  book_rename_account updates account name; existing transactions still resolve
-T1b.1.10 book_move_account moves account to new parent; full path reflects new location
-T1b.1.11 book_delete_account fails on account with transactions when require_zero_balance=True
-T1b.1.12 book_delete_account succeeds on empty account; account absent from tree after
-T1b.1.13 Resource gnucash://book-setup-guide is non-empty and contains "account_type"
-T1b.1.14 Claude fetches gnucash://book-setup-guide before calling book_add_account
+T2.1.1  book_add_account creates account at correct path in hierarchy
+T2.1.2  book_add_account with non-existent parent_path raises AccountNotFoundError
+T2.1.3  book_add_account with invalid account_type raises ValueError
+T2.1.4  book_add_account is idempotent: running with same args twice does not duplicate
+T2.1.5  book_get_account_tree("Liabilities") returns all AP accounts
+T2.1.6  book_verify_structure returns ok:true on a correctly-initialized book
+T2.1.7  book_verify_structure returns missing accounts after one is removed (test fixture)
+T2.1.8  book_set_opening_balance creates a balanced transaction with equity offset
+T2.1.9  book_rename_account updates account name; existing transactions still resolve
+T2.1.10 book_move_account moves account to new parent; full path reflects new location
+T2.1.11 book_delete_account fails on account with transactions when require_zero_balance=True
+T2.1.12 book_delete_account succeeds on empty account; account absent from tree after
+T2.1.13 Resource gnucash://book-setup-guide is non-empty and contains "account_type"
+T2.1.14 Claude fetches gnucash://book-setup-guide before calling book_add_account
          (manual — observe in CoWork/Desktop tool log; record in TEST_RESULTS.md)
 ```
 
 ---
 
-### M1b.2 — Vendor management tools
+### M2.2 — Vendor management tools
 
 **Deliverables (`src/tools/vendor.py`):**
 
@@ -1619,57 +1619,57 @@ in AP aging reports).
 
 **Tests:**
 ```
-T1b.2.1  vendor_add("Pacific Crest Electrical", "Subcontracts") creates:
+T2.2.1  vendor_add("Pacific Crest Electrical", "Subcontracts") creates:
          Liabilities:AP — Pacific Crest Electrical
          Expenses:Construction — Subcontracts:Pacific Crest Electrical
-T1b.2.2  vendor_add with invalid expense_category raises ValueError
-T1b.2.3  vendor_add is idempotent: adding same vendor twice does not duplicate accounts
-T1b.2.4  vendor_list includes newly added vendor with $0.00 balance
-T1b.2.5  After receive_invoice for new vendor, vendor_list shows correct AP balance
-T1b.2.6  vendor_rename updates both AP and expense account names atomically
-T1b.2.7  Existing transactions for renamed vendor remain valid (account GUID unchanged)
-T1b.2.8  vendor_get_details returns correct paths and $0 balance for new vendor
-T1b.2.9  vendor_update moves expense account to new category path
-T1b.2.10 vendor_update: transactions before update still on old path; new invoice
+T2.2.2  vendor_add with invalid expense_category raises ValueError
+T2.2.3  vendor_add is idempotent: adding same vendor twice does not duplicate accounts
+T2.2.4  vendor_list includes newly added vendor with $0.00 balance
+T2.2.5  After receive_invoice for new vendor, vendor_list shows correct AP balance
+T2.2.6  vendor_rename updates both AP and expense account names atomically
+T2.2.7  Existing transactions for renamed vendor remain valid (account GUID unchanged)
+T2.2.8  vendor_get_details returns correct paths and $0 balance for new vendor
+T2.2.9  vendor_update moves expense account to new category path
+T2.2.10 vendor_update: transactions before update still on old path; new invoice
          uses new path (no historical restatement)
-T1b.2.11 vendor_update with invalid new_expense_category raises ValueError
-T1b.2.12 vendor_delete without confirm=True raises RequiresConfirmationError
-T1b.2.13 vendor_delete with confirm=True on zero-balance vendor removes both accounts
-T1b.2.14 vendor_delete on vendor with transaction history raises VendorHasHistoryError
+T2.2.11 vendor_update with invalid new_expense_category raises ValueError
+T2.2.12 vendor_delete without confirm=True raises RequiresConfirmationError
+T2.2.13 vendor_delete with confirm=True on zero-balance vendor removes both accounts
+T2.2.14 vendor_delete on vendor with transaction history raises VendorHasHistoryError
          even with confirm=True (balance check is a hard guard, not overridable)
-T1b.2.15 Resource gnucash://vendor-guide is non-empty and contains expense_category table
-T1b.2.16 Resource gnucash://vendors returns updated list after vendor_add (live query)
-T1b.2.17 End-to-end: add vendor → receive invoice → pay invoice → AP clears to $0
+T2.2.15 Resource gnucash://vendor-guide is non-empty and contains expense_category table
+T2.2.16 Resource gnucash://vendors returns updated list after vendor_add (live query)
+T2.2.17 End-to-end: add vendor → receive invoice → pay invoice → AP clears to $0
 ```
 
 ---
 
-### M1b.3 — Resource completeness and lazy-load validation
+### M2.3 — Resource completeness and lazy-load validation
 
 **Deliverables:**
 - All static resources populated with production content (not placeholder text)
 - `gnucash://expected-chart` reflects full MC-6 account structure as a JSON dict
-- `gnucash://budget-guide` and `gnucash://eco-guide` added in Phase 1d (M1d.3)
+- `gnucash://budget-guide` and `gnucash://eco-guide` added in Phase 4 (M4.3)
 - Manual test of the lazy-load pattern: confirm resources are NOT loaded at
   session start, ARE loaded when Claude decides to use an administrative tool
 
 **Tests:**
 ```
-T1b.3.1  gnucash://resources returns dict with URIs for all static resources
+T2.3.1  gnucash://resources returns dict with URIs for all static resources
          (book-setup-guide, vendor-guide, expected-chart, budget-guide, eco-guide)
-T1b.3.2  gnucash://expected-chart contains all accounts from MC-6 (automated check
+T2.3.2  gnucash://expected-chart contains all accounts from MC-6 (automated check
          against the same constant used by book_verify_structure)
-T1b.3.3  Token audit (manual): start fresh Claude session, observe tool call log.
+T2.3.3  Token audit (manual): start fresh Claude session, observe tool call log.
          Resources should NOT appear in context at start.
          Call vendor_add → gnucash://vendor-guide SHOULD appear in context.
          Document token counts in TEST_RESULTS.md.
-T1b.3.4  book_verify_structure on a correctly-initialized book returns ok:true
+T2.3.4  book_verify_structure on a correctly-initialized book returns ok:true
          (uses gnucash://expected-chart internally, not via Claude context)
 ```
 
 ---
 
-### Phase 1b exit criteria
+### Phase 2 exit criteria
 
 - `vendor_add` validated end-to-end: add sub → invoice → pay → AP clears
 - `vendor_update` tested: expense category move verified; historical transactions unaffected
@@ -1678,21 +1678,21 @@ T1b.3.4  book_verify_structure on a correctly-initialized book returns ok:true
 - Account CRUD (`book_rename_account`, `book_move_account`, `book_delete_account`)
   tested against fixture book
 - Lazy-load pattern confirmed: resource tokens visible in Claude session only
-  when an administrative tool is actively being used (T1b.3.3 documented)
+  when an administrative tool is actively being used (T2.3.3 documented)
 - All new vendor and book tools visible in Claude Desktop and CoWork tool list
 
 ---
 
-## Phase 1c — Transaction CRUD and Audit Log
+## Phase 3 — Transaction CRUD and Audit Log
 
 **Goal:** Complete the write surface. Correct errors in posted transactions without
 manual GnuCash intervention. Expose change history to Claude so it can answer
 "what changed and when" questions. Closes the gap with ninetails-io's transaction
 CRUD feature set.
 
-**Prerequisites:** Phase 1 and Phase 1b complete.
+**Prerequisites:** Phase 1 and Phase 2 complete.
 
-### M1c.1 — Transaction correction tools
+### M3.1 — Transaction correction tools
 
 **Deliverables (add to `src/tools/write.py`):**
 
@@ -1755,23 +1755,23 @@ passed as `True`, preventing accidental deletion from a terse tool call.
 
 **Tests:**
 ```
-T1c.1.1  update_transaction changes description; balance and splits unchanged
-T1c.1.2  update_transaction changes date; transaction appears at new date in register
-T1c.1.3  update_transaction with no fields changed is a no-op (returns unchanged record)
-T1c.1.4  void_transaction zeroes account balance effect; transaction visible as [VOID]
-T1c.1.5  void_transaction records reason in transaction notes
-T1c.1.6  void_transaction on already-voided transaction raises ValueError
-T1c.1.7  delete_transaction without confirm=True raises RequiresConfirmationError
-T1c.1.8  delete_transaction with confirm=True removes transaction; balance corrected
-T1c.1.9  get_transaction returns all splits with account paths and reconcile state
-T1c.1.10 get_transaction on voided transaction shows void status and reason
-T1c.1.11 After void_transaction + new correcting entry: net balance matches expected
+T3.1.1  update_transaction changes description; balance and splits unchanged
+T3.1.2  update_transaction changes date; transaction appears at new date in register
+T3.1.3  update_transaction with no fields changed is a no-op (returns unchanged record)
+T3.1.4  void_transaction zeroes account balance effect; transaction visible as [VOID]
+T3.1.5  void_transaction records reason in transaction notes
+T3.1.6  void_transaction on already-voided transaction raises ValueError
+T3.1.7  delete_transaction without confirm=True raises RequiresConfirmationError
+T3.1.8  delete_transaction with confirm=True removes transaction; balance corrected
+T3.1.9  get_transaction returns all splits with account paths and reconcile state
+T3.1.10 get_transaction on voided transaction shows void status and reason
+T3.1.11 After void_transaction + new correcting entry: net balance matches expected
          (end-to-end: receive wrong invoice amount → void → re-receive correct amount)
 ```
 
 ---
 
-### M1c.2 — Audit log tool
+### M3.2 — Audit log tool
 
 **Deliverables (add to `src/tools/read.py`):**
 
@@ -1813,21 +1813,21 @@ Example output entry:
 
 **Tests:**
 ```
-T1c.2.1  get_audit_log returns entries in reverse chronological order
-T1c.2.2  limit=5 returns at most 5 entries
-T1c.2.3  tool_filter="receive_invoice" returns only invoice receipt entries
-T1c.2.4  since_date filters to entries after given date
-T1c.2.5  Uncommitted WAL entries (pending replay) appear with committed_at: null
-T1c.2.6  get_audit_log does not open a GnuCash session (pure file read, fast)
-T1c.2.7  Empty WAL returns empty list (not error)
+T3.2.1  get_audit_log returns entries in reverse chronological order
+T3.2.2  limit=5 returns at most 5 entries
+T3.2.3  tool_filter="receive_invoice" returns only invoice receipt entries
+T3.2.4  since_date filters to entries after given date
+T3.2.5  Uncommitted WAL entries (pending replay) appear with committed_at: null
+T3.2.6  get_audit_log does not open a GnuCash session (pure file read, fast)
+T3.2.7  Empty WAL returns empty list (not error)
 ```
 
 ---
 
-### Phase 1c exit criteria
+### Phase 3 exit criteria
 
 - Correction workflow validated end-to-end: post wrong invoice → void → post
-  correct invoice → balances match expected (T1c.1.11)
+  correct invoice → balances match expected (T3.1.11)
 - `get_audit_log` returns readable history of all Phase 1 test transactions
 - `delete_transaction` friction test: calling without `confirm=True` raises error
   (Claude must explicitly pass `confirm=True`)
@@ -1835,7 +1835,7 @@ T1c.2.7  Empty WAL returns empty list (not error)
 
 ---
 
-## Phase 1d — Budget and ECO Tools
+## Phase 4 — Budget and ECO Tools
 
 **Goal:** Replace the hardcoded ROM constants approach with live GnuCash native
 budgets. The GC's pre-construction pricing enters the book as a real GnuCash
@@ -1843,10 +1843,10 @@ budget object; `get_budget_vs_actual()` queries it rather than Python constants.
 Engineering Change Orders (ECOs) are tracked as first-class ledger objects
 that adjust both the budget and the expense accounts.
 
-**Prerequisites:** Phase 1b complete (account/vendor CRUD needed to set up
+**Prerequisites:** Phase 2 complete (account/vendor CRUD needed to set up
 Construction expense accounts before budget amounts can be entered).
 
-### M1d.1 — Budget CRUD tools
+### M4.1 — Budget CRUD tools
 
 **Background:** GnuCash budgets are stored as `GncBudget` objects in the book.
 Each budget has a name, a recurrence rule (period type × multiplier × start date),
@@ -1956,24 +1956,24 @@ construction project accounting practice.
 
 **Tests:**
 ```
-T1d.1.1  budget_create creates GncBudget object in book with correct num_periods
-T1d.1.2  budget_list returns newly created budget
-T1d.1.3  budget_set_amount sets amount on existing account
-T1d.1.4  budget_set_amount creates account and sets amount when account doesn't exist
-T1d.1.5  budget_get returns all accounts with correct budgeted amounts
-T1d.1.6  budget_get shows committed = 0, paid = 0, variance = budget before any invoices
-T1d.1.7  After receive_invoice to a budgeted account: budget_get shows correct committed
-T1d.1.8  After pay_invoice: budget_get shows correct paid; committed unchanged
-T1d.1.9  budget_update renames budget; amounts unchanged
-T1d.1.10 budget_delete without confirm=True raises RequiresConfirmationError
-T1d.1.11 budget_delete with confirm=True removes budget; transactions unaffected
-T1d.1.12 Full workflow: create budget → set 5 line items → receive 2 invoices →
+T4.1.1  budget_create creates GncBudget object in book with correct num_periods
+T4.1.2  budget_list returns newly created budget
+T4.1.3  budget_set_amount sets amount on existing account
+T4.1.4  budget_set_amount creates account and sets amount when account doesn't exist
+T4.1.5  budget_get returns all accounts with correct budgeted amounts
+T4.1.6  budget_get shows committed = 0, paid = 0, variance = budget before any invoices
+T4.1.7  After receive_invoice to a budgeted account: budget_get shows correct committed
+T4.1.8  After pay_invoice: budget_get shows correct paid; committed unchanged
+T4.1.9  budget_update renames budget; amounts unchanged
+T4.1.10 budget_delete without confirm=True raises RequiresConfirmationError
+T4.1.11 budget_delete with confirm=True removes budget; transactions unaffected
+T4.1.12 Full workflow: create budget → set 5 line items → receive 2 invoices →
          budget_get shows correct committed/paid/variance for each line
 ```
 
 ---
 
-### M1d.2 — Engineering Change Order (ECO) tools
+### M4.2 — Engineering Change Order (ECO) tools
 
 **Background:** An ECO (Engineering Change Order, also called CO — Change Order)
 is a formal modification to the GC's contracted scope and/or price. Each ECO has:
@@ -2077,25 +2077,25 @@ the KVP data persists in the XML book file.
 
 **Tests:**
 ```
-T1d.2.1  eco_create stores ECO with status=pending; no transactions posted
-T1d.2.2  eco_list returns newly created ECO with correct fields
-T1d.2.3  eco_list(status="pending") excludes approved and voided ECOs
-T1d.2.4  eco_get returns full ECO detail including notes
-T1d.2.5  eco_approve(additive) posts DR Change Orders / CR AP transaction
-T1d.2.6  eco_approve(additive) increases budget on affected account
-T1d.2.7  eco_approve(deductive) posts DR AP / CR Change Orders reversal
-T1d.2.8  eco_approve(deductive) decreases budget on affected account
-T1d.2.9  eco_void(pending) changes status; no transaction posted
-T1d.2.10 eco_void(approved) reverses posted transaction; budget reverted
-T1d.2.11 eco_void records reason in KVP; ECO visible in eco_list with void status
-T1d.2.12 eco_list shows correct total approved ECO value and pending ECO exposure
-T1d.2.13 Full workflow: CO-001 additive $5K electrical → approve → budget_get shows
+T4.2.1  eco_create stores ECO with status=pending; no transactions posted
+T4.2.2  eco_list returns newly created ECO with correct fields
+T4.2.3  eco_list(status="pending") excludes approved and voided ECOs
+T4.2.4  eco_get returns full ECO detail including notes
+T4.2.5  eco_approve(additive) posts DR Change Orders / CR AP transaction
+T4.2.6  eco_approve(additive) increases budget on affected account
+T4.2.7  eco_approve(deductive) posts DR AP / CR Change Orders reversal
+T4.2.8  eco_approve(deductive) decreases budget on affected account
+T4.2.9  eco_void(pending) changes status; no transaction posted
+T4.2.10 eco_void(approved) reverses posted transaction; budget reverted
+T4.2.11 eco_void records reason in KVP; ECO visible in eco_list with void status
+T4.2.12 eco_list shows correct total approved ECO value and pending ECO exposure
+T4.2.13 Full workflow: CO-001 additive $5K electrical → approve → budget_get shows
          original $45K + $5K ECO split correctly; variance updated
 ```
 
 ---
 
-### M1d.3 — Updated budget_vs_actual and project_summary
+### M4.3 — Updated budget_vs_actual and project_summary
 
 **Deliverables:**
 
@@ -2151,18 +2151,18 @@ Output when `include_ecos=True`:
 
 **Tests:**
 ```
-T1d.3.1  get_budget_vs_actual with no budget in book returns clear error message
-T1d.3.2  get_budget_vs_actual returns correct variance after entering GC budget
-T1d.3.3  get_budget_vs_actual(include_ecos=True) shows ECO adjustments separately
-T1d.3.4  get_budget_vs_actual(include_ecos=False) shows only original contract budget
-T1d.3.5  get_project_summary includes budget_status with correct pending_eco_exposure
-T1d.3.6  Professional fees (Architecture, Structural, MEP) appear in budget_vs_actual
+T4.3.1  get_budget_vs_actual with no budget in book returns clear error message
+T4.3.2  get_budget_vs_actual returns correct variance after entering GC budget
+T4.3.3  get_budget_vs_actual(include_ecos=True) shows ECO adjustments separately
+T4.3.4  get_budget_vs_actual(include_ecos=False) shows only original contract budget
+T4.3.5  get_project_summary includes budget_status with correct pending_eco_exposure
+T4.3.6  Professional fees (Architecture, Structural, MEP) appear in budget_vs_actual
          only if a budget amount has been set on those accounts
 ```
 
 ---
 
-### Phase 1d exit criteria
+### Phase 4 exit criteria
 
 - Full GC budget entry workflow validated: create budget → set all line items →
   `budget_get` matches GC spreadsheet totals
@@ -2176,14 +2176,14 @@ T1d.3.6  Professional fees (Architecture, Structural, MEP) appear in budget_vs_a
 
 ---
 
-## Phase 2 — Infrastructure: Sparsebundle, Wrappers, and Snapshots
+## Phase 5 — Infrastructure: Sparsebundle, Wrappers, and Snapshots
 
 **Goal:** Harden the operational story. The sparsebundle is the authoritative
 storage medium. The zsh wrappers handle the full lifecycle cleanly. Snapshots work.
 
-**Prerequisites:** Phase 1, Phase 1b, Phase 1c, and Phase 1d complete. Spike E result known.
+**Prerequisites:** Phase 1, Phase 2, Phase 3, and Phase 4 complete. Spike E result known.
 
-### M2.1 — Sparsebundle creation and book migration
+### M5.1 — Sparsebundle creation and book migration
 
 **Deliverables:**
 - `scripts/create-book-volume.zsh` — one-time setup:
@@ -2195,17 +2195,17 @@ storage medium. The zsh wrappers handle the full lifecycle cleanly. Snapshots wo
 
 **Tests:**
 ```
-T2.1.1  Script creates ~/books/project.sparsebundle
-T2.1.2  Volume mounts at /Volumes/GnuCash-Project after script runs
-T2.1.3  project.gnucash present inside mounted volume
-T2.1.4  GnuCash Python bindings open the file via /data/project.gnucash in container
-T2.1.5  hdiutil detach /Volumes/GnuCash-Project succeeds cleanly
-T2.1.6  Re-running script with volume already present aborts with clear error message
+T5.1.1  Script creates ~/books/project.sparsebundle
+T5.1.2  Volume mounts at /Volumes/GnuCash-Project after script runs
+T5.1.3  project.gnucash present inside mounted volume
+T5.1.4  GnuCash Python bindings open the file via /data/project.gnucash in container
+T5.1.5  hdiutil detach /Volumes/GnuCash-Project succeeds cleanly
+T5.1.6  Re-running script with volume already present aborts with clear error message
 ```
 
 ---
 
-### M2.2 — Swift proxy Phase 1 (gnucash-mcp binary)
+### M5.2 — Swift proxy Phase 1 (gnucash-mcp binary)
 
 **Deliverables:** `Sources/gnucash-mcp/` — Swift executable implementing MC-9
 Phase 1 proxy:
@@ -2275,7 +2275,7 @@ static let operational: Set<String> = tier1.union(tier1Crud)
 static let reconcile: Set<String> = [
     "list_transactions", "get_transaction", "get_account_balance",
     "get_audit_log", "void_transaction", "update_transaction",
-    // reconciliation tools added in Phase 4
+    // reconciliation tools added in Phase 7
 ]
 
 static let tools: [MCPTool] = [
@@ -2345,30 +2345,30 @@ func dispatch(_ request: JSONRPCRequest) async throws -> JSONRPCResponse {
 
 **Tests:**
 ```
-T2.2.1  gnucash-mcp start attaches sparsebundle and begins listening on :8980
-T2.2.2  curl POST localhost:8980/mcp initialize returns valid response, no container started
-T2.2.3  curl POST localhost:8980/mcp tools/list returns full catalog, no container started
-T2.2.4  curl POST localhost:8980/mcp resources/read gnucash://book-setup-guide returns
+T5.2.1  gnucash-mcp start attaches sparsebundle and begins listening on :8980
+T5.2.2  curl POST localhost:8980/mcp initialize returns valid response, no container started
+T5.2.3  curl POST localhost:8980/mcp tools/list returns full catalog, no container started
+T5.2.4  curl POST localhost:8980/mcp resources/read gnucash://book-setup-guide returns
         markdown content, no container started
-T2.2.5  tools/call receive_invoice starts container, dispatches, returns result
-T2.2.6  Second tools/call within 5s reuses warm container (pool hit — verify via timing
+T5.2.5  tools/call receive_invoice starts container, dispatches, returns result
+T5.2.6  Second tools/call within 5s reuses warm container (pool hit — verify via timing
         and ContainerAPIClient call count)
-T2.2.7  Third tools/call after 6s idle starts fresh container (pool miss after TTL)
-T2.2.8  gnucash-mcp status shows correct pool state (warm/cold) and last call time
-T2.2.9  gnucash-mcp stop sends SIGTERM → proxy drains pool → detaches sparsebundle
+T5.2.7  Third tools/call after 6s idle starts fresh container (pool miss after TTL)
+T5.2.8  gnucash-mcp status shows correct pool state (warm/cold) and last call time
+T5.2.9  gnucash-mcp stop sends SIGTERM → proxy drains pool → detaches sparsebundle
         → exits cleanly within 5 seconds
-T2.2.10 kill -9 on proxy → sparsebundle left attached (expected) → gnucash-mcp start
+T5.2.10 kill -9 on proxy → sparsebundle left attached (expected) → gnucash-mcp start
         detects existing mount and re-attaches cleanly or errors clearly
-T2.2.11 Simulate sleep/wake: stop container externally while pool holds handle →
+T5.2.11 Simulate sleep/wake: stop container externally while pool holds handle →
         next tool call detects stale handle, starts fresh container, succeeds (KU-11)
-T2.2.12 Claude Desktop shows gnucash-myproject as connected after gnucash-mcp start
+T5.2.12 Claude Desktop shows gnucash-myproject as connected after gnucash-mcp start
         (manual; record in TEST_RESULTS.md)
-T2.2.13 CoWork session can call get_project_summary() via SDK bridge (manual)
+T5.2.13 CoWork session can call get_project_summary() via SDK bridge (manual)
 ```
 
 ---
 
-### M2.3 — GUI wrapper (gnucash-browse)
+### M5.3 — GUI wrapper (gnucash-browse)
 
 **Deliverables:**
 - `bin/gnucash-browse` zsh script:
@@ -2383,21 +2383,21 @@ T2.2.13 CoWork session can call get_project_summary() via SDK bridge (manual)
 
 **Tests:**
 ```
-T2.3.1  Script aborts if /Volumes/GnuCash-Project already mounted
-T2.3.2  Script aborts if GnuCash process already running (pgrep check)
-T2.3.3  Volume attached read-only — confirmed by attempting write from shell:
+T5.3.1  Script aborts if /Volumes/GnuCash-Project already mounted
+T5.3.2  Script aborts if GnuCash process already running (pgrep check)
+T5.3.3  Volume attached read-only — confirmed by attempting write from shell:
         echo x >> /Volumes/GnuCash-Project/test.txt → "Read-only file system" error
-T2.3.4  GnuCash opens book and displays account tree (manual)
-T2.3.5  Cmd-S in GnuCash produces no-op or error, no .LCK created (Spike D confirmed)
-T2.3.6  Quitting GnuCash triggers detach — mount point gone within 10 seconds
-T2.3.7  All Phase 1 transactions visible and correct in GUI (manual cross-check)
-T2.3.8  GnuCash force-quit (Activity Monitor) → EXIT trap fires → sparsebundle detached
+T5.3.4  GnuCash opens book and displays account tree (manual)
+T5.3.5  Cmd-S in GnuCash produces no-op or error, no .LCK created (Spike D confirmed)
+T5.3.6  Quitting GnuCash triggers detach — mount point gone within 10 seconds
+T5.3.7  All Phase 1 transactions visible and correct in GUI (manual cross-check)
+T5.3.8  GnuCash force-quit (Activity Monitor) → EXIT trap fires → sparsebundle detached
         (KU-7 confirmation: test `wait $PID` vs `open --wait-apps` for this case)
 ```
 
 ---
 
-### M2.4 — Snapshot management
+### M5.4 — Snapshot management
 
 **Deliverables:**
 - `scripts/snapshot.zsh` with functions exported for use in both wrappers:
@@ -2410,42 +2410,42 @@ T2.3.8  GnuCash force-quit (Activity Monitor) → EXIT trap fires → sparsebund
 
 **Tests:**
 ```
-T2.4.1  snapshot_create creates snapshot with gnucash-mcp- prefix
-T2.4.2  snapshot_list shows the new snapshot in output
-T2.4.3  snapshot_mount mounts snapshot at given path, read-only
-T2.4.4  File from mounted snapshot matches the file as of snapshot time
-T2.4.5  snapshot_restore_file copies file from snapshot alongside live file
+T5.4.1  snapshot_create creates snapshot with gnucash-mcp- prefix
+T5.4.2  snapshot_list shows the new snapshot in output
+T5.4.3  snapshot_mount mounts snapshot at given path, read-only
+T5.4.4  File from mounted snapshot matches the file as of snapshot time
+T5.4.5  snapshot_restore_file copies file from snapshot alongside live file
         with .restored extension; original file unchanged
-T2.4.6  snapshot_prune 3 leaves exactly 3 gnucash-mcp- prefixed snapshots;
+T5.4.6  snapshot_prune 3 leaves exactly 3 gnucash-mcp- prefixed snapshots;
         other snapshot types (Time Machine etc.) unaffected
-T2.4.7  Restore drill (manual, document in TEST_RESULTS.md):
+T5.4.7  Restore drill (manual, document in TEST_RESULTS.md):
         Post a bad transaction → take snapshot → post another transaction →
         restore from snapshot → verify bad transaction gone and book intact
 ```
 
 ---
 
-### Phase 2 exit criteria
+### Phase 5 exit criteria
 
 - Full session lifecycle works end-to-end:
   `gnucash-mcp start` → Claude posts transactions → pool reaps container →
   `gnucash-browse` → read-only GUI → quit → all mounts clean
-- No dangling mounts after normal and abnormal exits (T2.2.9–11, T2.3.6–8)
+- No dangling mounts after normal and abnormal exits (T5.2.9–11, T5.3.6–8)
 - Snapshot pre-session and file restore tested against real book data
 - `README.md` written with: prerequisites, one-time setup, daily-use workflow,
   recovery procedures
 
 ---
 
-## Phase 3 — Project-Specific MCP Tools
+## Phase 6 — Project-Specific MCP Tools
 
 **Goal:** Project-specific tools: budget tracking, AP aging,
 interest income, and tranche management. Claude can answer project finance questions
 directly from the ledger.
 
-**Prerequisites:** Phase 2 complete.
+**Prerequisites:** Phase 5 complete.
 
-### M3.1 — External budgets & professional fees (TOML-driven)
+### M6.1 — External budgets & professional fees (TOML-driven)
 
 TL;DR — Professional-fee contract values and auxiliary external budget items
 (hourly overtime rates, material overage allowances, contingency percentages)
@@ -2529,7 +2529,7 @@ Decision / assumptions
 
 ---
 
-### M3.2 — AP aging
+### M6.2 — AP aging
 
 **Deliverables:**
 - `get_ap_aging() -> dict`
@@ -2539,16 +2539,16 @@ Decision / assumptions
 
 **Tests:**
 ```
-T3.2.1  Vendor with paid invoice shows $0 balance and does not appear in output
-T3.2.2  Vendor with open invoice shows correct amount and days_outstanding
-T3.2.3  Invoice past due_date has past_due: true
-T3.2.4  get_ap_aging() returns empty dict when all AP cleared
-T3.2.5  days_outstanding calculated from today's date, not a hardcoded value
+T6.2.1  Vendor with paid invoice shows $0 balance and does not appear in output
+T6.2.2  Vendor with open invoice shows correct amount and days_outstanding
+T6.2.3  Invoice past due_date has past_due: true
+T6.2.4  get_ap_aging() returns empty dict when all AP cleared
+T6.2.5  days_outstanding calculated from today's date, not a hardcoded value
 ```
 
 ---
 
-### M3.3 — Interest income
+### M6.3 — Interest income
 
 **Deliverables:**
 - `post_interest(month: str, amount: str) -> dict`
@@ -2560,16 +2560,16 @@ T3.2.5  days_outstanding calculated from today's date, not a hardcoded value
 
 **Tests:**
 ```
-T3.3.1  post_interest("2025-01", "270.00") creates balanced transaction
-T3.3.2  Interest Income account balance increases by posted amount
-T3.3.3  estimate_monthly_interest(0.03) with $107,978 balance returns ~$270
-T3.3.4  post_interest with negative amount raises ValueError (not posted)
-T3.3.5  post_interest with invalid month format raises ValueError
+T6.3.1  post_interest("2025-01", "270.00") creates balanced transaction
+T6.3.2  Interest Income account balance increases by posted amount
+T6.3.3  estimate_monthly_interest(0.03) with $107,978 balance returns ~$270
+T6.3.4  post_interest with negative amount raises ValueError (not posted)
+T6.3.5  post_interest with invalid month format raises ValueError
 ```
 
 ---
 
-### M3.4 — Tranche tracking and runway
+### M6.4 — Tranche tracking and runway
 
 **Deliverables:**
 - `get_tranche_summary() -> dict`
@@ -2580,17 +2580,17 @@ T3.3.5  post_interest with invalid month format raises ValueError
 
 **Tests:**
 ```
-T3.4.1  get_tranche_summary() lists each fund_project transaction with correct amounts
-T3.4.2  Running total in get_tranche_summary() matches
+T6.4.1  get_tranche_summary() lists each fund_project transaction with correct amounts
+T6.4.2  Running total in get_tranche_summary() matches
         get_account_balance("Assets:Project Checking — First Project Bank")
-T3.4.3  project_runway_days() returns a positive integer after some spend activity
-T3.4.4  project_runway_days() with zero spend returns None (not ZeroDivisionError)
-T3.4.5  project_runway_days() changes correctly after posting a new payment
+T6.4.3  project_runway_days() returns a positive integer after some spend activity
+T6.4.4  project_runway_days() with zero spend returns None (not ZeroDivisionError)
+T6.4.5  project_runway_days() changes correctly after posting a new payment
 ```
 
 ---
 
-### Phase 3 exit criteria
+### Phase 6 exit criteria
 
 Claude can answer all of the following from the live ledger, without manual
 calculation:
@@ -2604,18 +2604,18 @@ calculation:
 - "What is my revised contract total including approved change orders?"
 
 All answers cross-checked against project documents in this Claude project.
-Construction budget answers require Phase 1d complete (GC budget entered).
+Construction budget answers require Phase 4 complete (GC budget entered).
 
 ---
 
-## Phase 4 — Reconciliation and Reporting
+## Phase 7 — Reconciliation and Reporting
 
 **Goal:** Bank reconciliation workflow and exportable reports for tax and
 record-keeping purposes.
 
-**Prerequisites:** Phase 3 complete.
+**Prerequisites:** Phase 6 complete.
 
-### M4.1 — Bank reconciliation
+### M7.1 — Bank reconciliation
 
 **Deliverables:**
 - `reconcile_account(account_path, statement_balance, statement_date) -> dict`
@@ -2625,16 +2625,16 @@ record-keeping purposes.
 
 **Tests:**
 ```
-T4.1.1  reconcile_account returns correct non-zero difference when one check outstanding
-T4.1.2  reconcile_account returns difference of $0.00 when fully reconciled
-T4.1.3  mark_cleared updates reconciliation flag; transaction appears as cleared in GUI
-T4.1.4  Manual reconciliation drill against one actual project checking statement
+T7.1.1  reconcile_account returns correct non-zero difference when one check outstanding
+T7.1.2  reconcile_account returns difference of $0.00 when fully reconciled
+T7.1.3  mark_cleared updates reconciliation flag; transaction appears as cleared in GUI
+T7.1.4  Manual reconciliation drill against one actual project checking statement
         (document date, statement balance, result in TEST_RESULTS.md)
 ```
 
 ---
 
-### M4.2 — CSV export
+### M7.2 — CSV export
 
 **Deliverables:**
 - `export_transactions_csv(account_path, start_date, end_date) -> str`
@@ -2644,16 +2644,16 @@ T4.1.4  Manual reconciliation drill against one actual project checking statemen
 
 **Tests:**
 ```
-T4.2.1  export_transactions_csv produces valid CSV with correct column headers
-T4.2.2  Date range filtering excludes transactions outside range
-T4.2.3  Debit/credit amounts in CSV match GnuCash register values
-T4.2.4  CSV opens without error in Numbers and column types are preserved (manual)
-T4.2.5  export_journal_csv debits equal credits across all rows (balanced)
+T7.2.1  export_transactions_csv produces valid CSV with correct column headers
+T7.2.2  Date range filtering excludes transactions outside range
+T7.2.3  Debit/credit amounts in CSV match GnuCash register values
+T7.2.4  CSV opens without error in Numbers and column types are preserved (manual)
+T7.2.5  export_journal_csv debits equal credits across all rows (balanced)
 ```
 
 ---
 
-### M4.3 — Year-end summary
+### M7.3 — Year-end summary
 
 **Deliverables:**
 - `get_year_end_summary(year: int) -> dict`
@@ -2662,15 +2662,15 @@ T4.2.5  export_journal_csv debits equal credits across all rows (balanced)
 
 **Tests:**
 ```
-T4.3.1  get_year_end_summary(2024) returns correct totals for known 2024 transactions
-T4.3.2  interest_income matches sum of post_interest entries for the year
-T4.3.3  ap_balance_year_end matches known open invoices as of Dec 31
-T4.3.4  net_project_cost = total_spend - interest_income (verified manually)
+T7.3.1  get_year_end_summary(2024) returns correct totals for known 2024 transactions
+T7.3.2  interest_income matches sum of post_interest entries for the year
+T7.3.3  ap_balance_year_end matches known open invoices as of Dec 31
+T7.3.4  net_project_cost = total_spend - interest_income (verified manually)
 ```
 
 ---
 
-### Phase 4 exit criteria
+### Phase 7 exit criteria
 
 - Monthly reconciliation workflow tested against one real bank statement
 - 2024 year-end summary produced and validated against project documents
@@ -2678,17 +2678,17 @@ T4.3.4  net_project_cost = total_spend - interest_income (verified manually)
 
 ---
 
-## Phase 5 — Hardening and Claude Desktop Integration
+## Phase 8 — Hardening and Claude Desktop Integration
 
 **Goal:** Production-ready reliability for a project expected to run 18–24 months.
 The MCP server is the default interface; macOS GnuCash is the occasional inspector.
 
-### M5.1 — Structured logging
+### M8.1 — Structured logging
 
 **Deliverables (two log streams):**
 
 *Proxy-level log* — Swift proxy writes to `~/.local/share/gnucash-mcp/proxy.log`:
-- Every request received: method, tool name, session ID (if Phase 2), timestamp
+- Every request received: method, tool name, session ID (if Phase 5), timestamp
 - Container pool events: start, reuse, TTL expiry, sleep/wake invalidation
 - Sparsebundle mount/unmount events
 - JSONL format
@@ -2702,18 +2702,18 @@ The MCP server is the default interface; macOS GnuCash is the occasional inspect
 
 **Tests:**
 ```
-T5.1.1  Proxy log records tool name, duration, and success/failure for each request
-T5.1.2  Proxy log records container pool events (start, reuse, expire)
-T5.1.3  Dispatcher log records GnuCash session open/save/end with timestamps
-T5.1.4  Failed tool call in dispatcher produces log entry with error and stack trace
-T5.1.5  Crash recovery replay produces dispatcher log entry with replay=true field,
+T8.1.1  Proxy log records tool name, duration, and success/failure for each request
+T8.1.2  Proxy log records container pool events (start, reuse, expire)
+T8.1.3  Dispatcher log records GnuCash session open/save/end with timestamps
+T8.1.4  Failed tool call in dispatcher produces log entry with error and stack trace
+T8.1.5  Crash recovery replay produces dispatcher log entry with replay=true field,
         distinguishable from new posts
-T5.1.6  After Mac sleep/wake, proxy log records pool invalidation event
+T8.1.6  After Mac sleep/wake, proxy log records pool invalidation event
 ```
 
 ---
 
-### M5.2 — Schema version guard
+### M8.2 — Schema version guard
 
 **Deliverables:**
 - In Python dispatcher `src/__main__.py`, before dispatching any `tools/call`:
@@ -2726,17 +2726,17 @@ T5.1.6  After Mac sleep/wake, proxy log records pool invalidation event
 
 **Tests:**
 ```
-T5.2.1  Guard passes when book version matches container version
-T5.2.2  Guard returns JSON-RPC error -32603 with clear message when book version
+T8.2.1  Guard passes when book version matches container version
+T8.2.2  Guard returns JSON-RPC error -32603 with clear message when book version
         > container version; no GnuCash session opened
-T5.2.3  Guard does not false-positive on a book created by same version
-T5.2.4  Claude Desktop surfaces the error message rather than silently failing
+T8.2.3  Guard does not false-positive on a book created by same version
+T8.2.4  Claude Desktop surfaces the error message rather than silently failing
         (manual — trigger by temporarily decrementing container version string)
 ```
 
 ---
 
-### M5.3 — Backup verification
+### M8.3 — Backup verification
 
 **Deliverables:**
 - `scripts/verify-backup.zsh` — weekly manual trigger:
@@ -2747,14 +2747,14 @@ T5.2.4  Claude Desktop surfaces the error message rather than silently failing
 
 **Tests:**
 ```
-T5.3.1  verify-backup.zsh PASS on a known-good snapshot
-T5.3.2  verify-backup.zsh FAIL on a book with manually corrupted XML
-T5.3.3  Script runs to completion without hanging (max 30 second timeout)
+T8.3.1  verify-backup.zsh PASS on a known-good snapshot
+T8.3.2  verify-backup.zsh FAIL on a book with manually corrupted XML
+T8.3.3  Script runs to completion without hanging (max 30 second timeout)
 ```
 
 ---
 
-### M5.4 — Claude Desktop configuration and launchd integration
+### M8.4 — Claude Desktop configuration and launchd integration
 
 **Deliverables:**
 - `gnucash-mcp install` subcommand:
@@ -2799,36 +2799,36 @@ at login — containers are spun up on first tool call. Claude Desktop connects 
 
 **Tests:**
 ```
-T5.4.1  gnucash-mcp install writes correct config entries without error
-T5.4.2  Claude Desktop shows gnucash-myproject connected after launchctl load + restart
-T5.4.3  get_project_summary() callable from Claude.ai chat window
-T5.4.4  After clean gnucash-mcp stop (exit 0), launchd does NOT restart the proxy
-T5.4.5  After simulated crash (kill -9 on proxy), launchd restarts it within 5s
-T5.4.6  Server startup latency < 2s from gnucash-mcp start to first tools/list response
+T8.4.1  gnucash-mcp install writes correct config entries without error
+T8.4.2  Claude Desktop shows gnucash-myproject connected after launchctl load + restart
+T8.4.3  get_project_summary() callable from Claude.ai chat window
+T8.4.4  After clean gnucash-mcp stop (exit 0), launchd does NOT restart the proxy
+T8.4.5  After simulated crash (kill -9 on proxy), launchd restarts it within 5s
+T8.4.6  Server startup latency < 2s from gnucash-mcp start to first tools/list response
         (proxy only — no container started yet)
-T5.4.7  First tool call latency < 1.5s (includes container start via ContainerAPIClient)
-T5.4.8  CoWork session shows gnucash-myproject tools available via SDK bridge
-T5.4.9  Mac sleep → wake → tool call succeeds (KU-11 sleep/wake recovery confirmed;
+T8.4.7  First tool call latency < 1.5s (includes container start via ContainerAPIClient)
+T8.4.8  CoWork session shows gnucash-myproject tools available via SDK bridge
+T8.4.9  Mac sleep → wake → tool call succeeds (KU-11 sleep/wake recovery confirmed;
         record in TEST_RESULTS.md)
 ```
 
 ---
 
-### Phase 5 exit criteria
+### Phase 8 exit criteria
 
 - Swift proxy registered via launchd, starts at login, survives crash-restart
 - Claude Desktop connected via `streamable-http` to `localhost:8980`
-- CoWork session confirmed working via SDK bridge (T5.4.8 documented)
+- CoWork session confirmed working via SDK bridge (T8.4.8 documented)
 - Schema version guard catches a deliberate version mismatch in testing
 - Backup verification script runs clean on current book state
 - Proxy startup latency (tools/list, no container) < 2s documented
 - First tool call latency (cold container start) < 1.5s documented
-- Sleep/wake recovery confirmed (T5.4.9 documented)
-- M5.5 (session-aware pool) implemented if CoWork multi-step latency unacceptable
+- Sleep/wake recovery confirmed (T8.4.9 documented)
+- M8.5 (session-aware pool) implemented if CoWork multi-step latency unacceptable
 
 ---
 
-### M5.5 — Swift proxy Phase 2 (session-aware pool, optional)
+### M8.5 — Swift proxy Phase 2 (session-aware pool, optional)
 
 **Goal:** Upgrade the proxy's container pool from TTL-based to session-aware,
 so the warm container stays alive for the duration of a Claude Desktop
@@ -2873,12 +2873,12 @@ func handleInitialize(_ request: JSONRPCRequest) -> JSONRPCResponse {
 
 **Tests:**
 ```
-T5.5.1  Two concurrent initialize requests produce two distinct session IDs
-T5.5.2  Tool calls within same session reuse warm container (no cold start after first call)
-T5.5.3  Tool call with unknown/expired session ID starts fresh container, returns result
-T5.5.4  Session termination (DELETE /mcp) drains that session's container within 2s
-T5.5.5  After 60s idle, expired session's container is reaped by reap loop
-T5.5.6  10-step CoWork agentic task: only 1 cold start (first call), remaining 9 are warm
+T8.5.1  Two concurrent initialize requests produce two distinct session IDs
+T8.5.2  Tool calls within same session reuse warm container (no cold start after first call)
+T8.5.3  Tool call with unknown/expired session ID starts fresh container, returns result
+T8.5.4  Session termination (DELETE /mcp) drains that session's container within 2s
+T8.5.5  After 60s idle, expired session's container is reaped by reap loop
+T8.5.6  10-step CoWork agentic task: only 1 cold start (first call), remaining 9 are warm
         (manual — measure wall clock time in CoWork; record in TEST_RESULTS.md)
 ```
 
@@ -2893,7 +2893,7 @@ order. Milestones within a phase run in order.
 
 *Unit tests* — pytest with GnuCash book fixtures. Run inside the container
 against a temp directory. No HTTP server, no Claude Desktop. Cover all T1.x,
-T1b.x, T3.x, T4.x logic.
+T2.x, T6.x, T7.x logic.
 
 *Integration tests* — require the full stack (Swift proxy running, Claude Desktop
 connected). These are manual tests recorded in `TEST_RESULTS.md`. Identified in
@@ -3006,7 +3006,7 @@ gnucash-mcp/
 ├── DEVELOPMENT.md             ← this file
 ├── SPIKE_RESULTS.md           ← Phase 0 outcomes (fill in as spikes run)
 ├── TEST_RESULTS.md            ← manual test log
-├── README.md                  ← setup and daily-use guide (Phase 2+)
+├── README.md                  ← setup and daily-use guide (Phase 5+)
 │
 ├── Package.swift              ← Swift package (gnucash-mcp proxy binary)
 ├── Package.resolved
@@ -3047,18 +3047,18 @@ gnucash-mcp/
 │   └── tools/
 │       ├── read.py            ← Tier 1 read-only tools (M1.5)
 │       ├── write.py           ← Tier 1 write tools (M1.6)
-│       ├── book.py            ← Tier 2 book_* tools (M1b.1)
-│       ├── vendor.py          ← Tier 2 vendor_* tools (M1b.2)
-│       ├── budget.py          ← Tier 2 budget_* tools — GnuCash native budget (M1d.1)
-│       ├── eco.py             ← Tier 2 eco_* tools — change order tracking (M1d.2)
-│       └── project.py         ← project-specific tools (Phase 3)
+│       ├── book.py            ← Tier 2 book_* tools (M2.1)
+│       ├── vendor.py          ← Tier 2 vendor_* tools (M2.2)
+│       ├── budget.py          ← Tier 2 budget_* tools — GnuCash native budget (M4.1)
+│       ├── eco.py             ← Tier 2 eco_* tools — change order tracking (M4.2)
+│       └── project.py         ← project-specific tools (Phase 6)
 │
 ├── resources/                 ← Source content for Swift StaticResources.swift
 │   ├── book_setup_guide.md    ← gnucash://book-setup-guide
 │   ├── vendor_guide.md        ← gnucash://vendor-guide
 │   ├── expected_chart.json    ← gnucash://expected-chart (MC-6 account structure)
-│   ├── budget_guide.md        ← gnucash://budget-guide (Phase 1d)
-│   └── eco_guide.md           ← gnucash://eco-guide (Phase 1d)
+│   ├── budget_guide.md        ← gnucash://budget-guide (Phase 4)
+│   └── eco_guide.md           ← gnucash://eco-guide (Phase 4)
 │
 ├── tests/                     ← Python pytest suite (runs inside container)
 │   ├── conftest.py
@@ -3066,18 +3066,18 @@ gnucash-mcp/
 │   ├── test_session.py        ← T1.4.x
 │   ├── test_read_tools.py     ← T1.5.x (dispatch-level, not HTTP)
 │   ├── test_write_tools.py    ← T1.6.x
-│   ├── test_book_tools.py     ← T1b.1.x
-│   ├── test_vendor_tools.py   ← T1b.2.x
-│   ├── test_crud_tools.py     ← T1c.1.x (transaction correction)
-│   ├── test_audit_log.py      ← T1c.2.x
-│   ├── test_budget_tools.py   ← T1d.1.x (GnuCash budget CRUD)
-│   ├── test_eco_tools.py      ← T1d.2.x (ECO CRUD)
-│   └── test_project_tools.py  ← T3.x
+│   ├── test_book_tools.py     ← T2.1.x
+│   ├── test_vendor_tools.py   ← T2.2.x
+│   ├── test_crud_tools.py     ← T3.1.x (transaction correction)
+│   ├── test_audit_log.py      ← T3.2.x
+│   ├── test_budget_tools.py   ← T4.1.x (GnuCash budget CRUD)
+│   ├── test_eco_tools.py      ← T4.2.x (ECO CRUD)
+│   └── test_project_tools.py  ← T6.x
 │
 ├── scripts/
 │   ├── init_book.py           ← chart of accounts initialization (M1.2)
-│   ├── create-book-volume.zsh ← sparsebundle one-time setup (M2.1)
-│   ├── verify-backup.zsh      ← backup verification (M5.3)
+│   ├── create-book-volume.zsh ← sparsebundle one-time setup (M5.1)
+│   ├── verify-backup.zsh      ← backup verification (M8.3)
 │   └── spike/                 ← Phase 0 throwaway scripts (delete after P0)
 │       ├── spike-a-bindings.sh
 │       ├── spike-b-virtiofs.zsh
@@ -3090,7 +3090,7 @@ gnucash-mcp/
 │           └── container/server.py
 │
 └── bin/
-    └── gnucash-browse         ← GUI read-only zsh wrapper (M2.3)
+    └── gnucash-browse         ← GUI read-only zsh wrapper (M5.3)
                                   (start/stop handled by gnucash-mcp Swift binary)
 ```
 
@@ -3100,7 +3100,7 @@ project.gnucash
 project.gnucash.20250401120000.gnucash   (GnuCash auto-backup)
 project.gnucash.20250401120000.log
 mcp-wal.jsonl                              (write-ahead log)
-mcp.log                                    (tool call log, Phase 5)
+mcp.log                                    (tool call log, Phase 8)
 ```
 
 ---
@@ -3154,4 +3154,4 @@ used at Phase 1 build time in `pyproject.toml`.
 has a matching version and update the container's pinned apt package. If the
 minor version gap exceeds 1 (e.g. macOS at 5.17, container PPA at 5.14), treat
 as blocking — rebuild container before next MCP write session.
-The schema version guard (M5.2) enforces this automatically.
+The schema version guard (M8.2) enforces this automatically.
