@@ -124,6 +124,7 @@ can proceed with confidence. Each has a designated spike in Phase 0.
 | KU-9 | Does Claude Desktop's `streamable-http` MCP connector correctly bridge to CoWork's VM via the SDK passthrough layer? | CoWork cannot use GnuCash tools despite Claude Desktop connecting successfully | Phase 0, Spike F |
 | KU-10 | Does `__unlock_ledger__` tool reliably cause Claude to treat it as a mandatory initialization step, or does it get skipped? | Context about tool groups and conventions not loaded; Claude makes incorrect tool choices | Phase 1, integration test |
 | KU-11 | After Mac sleep/wake, does the pooled container handle held by the Swift proxy become stale (VM suspended/killed)? How does `ContainerAPIClient` signal this? | Proxy forwards request to a dead container; tool call hangs or returns garbage | Phase 5, Swift proxy integration |
+| KU-12 | Ubuntu 26.04 LTS (releasing end of April 2026) — does `ppa:gnucash/ppa` publish arm64 packages for 26.04 in time to use it as the container base? What version of GnuCash ships in universe if the PPA is not yet available? | Must stay on 24.04 or ship a stale GnuCash version; Spike C re-validation required if base changes | Phase 0, Spike G |
 
 ---
 
@@ -981,6 +982,54 @@ round-trip exceeds 1 second or is unreliable:
 
 ---
 
+### Spike G — Ubuntu 26.04 LTS container base evaluation (resolves KU-12)
+
+**Question:** Is Ubuntu 26.04 LTS (releasing end of April 2026) a viable drop-in
+replacement for the Ubuntu 24.04 container base?
+
+Ubuntu 26.04 is the next LTS. The container base is currently pinned to 24.04 because
+that is what `ppa:gnucash/ppa` supports for arm64 at design time. This spike evaluates
+whether 26.04 is ready to adopt before or during Phase 1.
+
+**G1 — Universe package version:** What version of GnuCash ships in Ubuntu 26.04
+universe (without the PPA)?
+
+```bash
+# Run against a 26.04 container once released
+apt-cache show gnucash | grep Version
+```
+
+**G2 — PPA availability:** Has `ppa:gnucash/ppa` published arm64 packages for
+Ubuntu 26.04 (codename "oracular" or next LTS)?
+
+```bash
+# Check Launchpad PPA build status
+curl -s "https://launchpad.net/~gnucash/+archive/ubuntu/ppa/+packages" \
+  | grep -i "26\.\|oracular\|next-lts-codename"
+```
+
+> **Note:** As of April 2026, no PPAs for 26.04 exist yet. Do not block Phase 1 on
+> this spike — run it in parallel once 26.04 is released.
+
+**G3 — Migration smoke test:** If a 26.04 image with a working GnuCash package is
+available, re-run Spike A and Spike C tests against it:
+- `import gnucash` succeeds inside a 26.04 Apple Container
+- Cross-version schema compatibility (container GnuCash version vs macOS 5.15)
+
+**Decision matrix:**
+
+| Scenario | Action |
+|---|---|
+| PPA publishes for 26.04, version ≥ 5.14 | Update `Dockerfile` to `FROM ubuntu:26.04`, re-run Spike A/C |
+| Universe ships GnuCash ≥ 5.14 (PPA not needed) | Drop PPA dependency, update `Dockerfile` |
+| Neither available at Phase 1 start | Stay on 24.04; revisit after 26.04 PPA publishes |
+| GnuCash version < 5.14 on 26.04 | Stay on 24.04 indefinitely; document in `SPIKE_RESULTS.md` |
+
+**Note:** If the base image changes to 26.04, Spike C must be re-validated against
+the new container GnuCash version and the macOS 5.15 book file.
+
+---
+
 ### Phase 0 exit criteria
 
 All spikes must produce a written result (PASS or documented FAIL + chosen fallback)
@@ -994,6 +1043,7 @@ before Phase 1 begins. Record results in `SPIKE_RESULTS.md`.
 | D — Read-only enforcement | ☐ | |
 | E — APFS snapshots | ☐ | |
 | F — HTTP transport + CoWork bridge | ☐ | |
+| G — Ubuntu 26.04 evaluation | ☐ (non-blocking; run after 26.04 release) | |
 
 ---
 
