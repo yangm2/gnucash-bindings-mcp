@@ -27,3 +27,4 @@ Full documentation is split into focused files under [docs/development/](docs/de
 - [11-appendix-b-file-layout.md](docs/development/11-appendix-b-file-layout.md) — Repository and sparsebundle file layout
 - [12-appendix-c-dependencies.md](docs/development/12-appendix-c-dependencies.md) — Pinned dependency versions (Swift, Python, GnuCash)
 - [13-appendix-d-prior-art.md](docs/development/13-appendix-d-prior-art.md) — Comparison with ninetails-io/gnucash-mcp
+- [14-appendix-e-model-options.md](docs/development/14-appendix-e-model-options.md) — Model options (Claude, gpt-oss:20b/deepagents, AFM) and hybrid coordinator architecture
