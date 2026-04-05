@@ -52,6 +52,7 @@ can proceed with confidence. Each has a designated spike in Phase 0.
 | KU-10 | Does `__unlock_ledger__` tool reliably cause Claude to treat it as a mandatory initialization step, or does it get skipped? | Context about tool groups and conventions not loaded; Claude makes incorrect tool choices | Phase 1, integration test |
 | KU-11 | After Mac sleep/wake, does the pooled container handle held by the Swift proxy become stale (VM suspended/killed)? How does `ContainerAPIClient` signal this? | Proxy forwards request to a dead container; tool call hangs or returns garbage | Phase 5, Swift proxy integration |
 | KU-12 | Ubuntu 26.04 LTS (releasing end of April 2026) — does `ppa:gnucash/ppa` publish arm64 packages for 26.04 in time to use it as the container base? What version of GnuCash ships in universe if the PPA is not yet available? | Must stay on 24.04 or ship a stale GnuCash version; Spike C re-validation required if base changes | Phase 0, Spike G |
+| KU-13 | Can `pdfplumber` (or `pymupdf`) reliably extract structured fields (vendor, invoice number, line items, totals) from text-layer PDFs as produced by typical architecture/engineering firms and the project bank? If PDFs are scanned, OCR adds a dependency (tesseract) and quality risk. | PDF invoice and statement workflows require Claude vision input (high token cost) or manual data entry; path-based container mount approach fails for scanned docs | Phase 0, Spike H |
 
 ---
 

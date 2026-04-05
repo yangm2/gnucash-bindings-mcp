@@ -374,6 +374,121 @@ the new container GnuCash version and the macOS 5.15 book file.
 
 ---
 
+---
+
+### Spike H — PDF extraction from directory mount (resolves KU-13)
+
+**Question:** Can `pdfplumber` (or `pymupdf`) running inside the Ubuntu container
+reliably extract structured invoice and bank statement fields from text-layer PDFs
+passed as a mounted read-only directory — without requiring Claude vision input or
+OCR?
+
+This spike validates the path-based PDF workflow described in Appendix E. If PDFs
+are software-generated (text layer present), Python extraction is free and fast.
+If they are scanned images, the pipeline must fall back to Claude vision input
+(high token cost) or an OCR dependency (tesseract).
+
+> **Note:** Non-blocking — run when PDF workflows are needed (Phase 6 or later).
+> Does not gate Phases 1–5.
+
+**H1 — Text layer detection:** Can the container reliably detect whether a PDF
+has a text layer or is a scanned image?
+
+```python
+# spike-h.py — run inside container against sample PDFs in /invoices (read-only mount)
+import pdfplumber, sys
+from pathlib import Path
+
+def has_text_layer(pdf_path: str) -> bool:
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            if page.extract_text():
+                return True
+    return False
+
+for p in Path("/invoices").glob("*.pdf"):
+    print(p.name, "text-layer:", has_text_layer(str(p)))
+```
+
+**H2 — Invoice field extraction:** For text-layer invoices, can structured fields
+be extracted reliably enough to drive `receive_invoice` without manual correction?
+
+```python
+# Target fields for each invoice PDF:
+# - vendor name
+# - invoice reference number
+# - invoice date
+# - line items: description + amount
+# - total amount
+
+def extract_invoice_fields(pdf_path: str) -> dict:
+    with pdfplumber.open(pdf_path) as pdf:
+        text = "\n".join(p.extract_text() or "" for p in pdf.pages)
+    # Parse with regex or small structured extraction
+    # Return dict or raise ExtractionError if confidence low
+    ...
+```
+
+Run against a representative sample of real invoices from each vendor. Record
+extraction accuracy per vendor in `SPIKE_RESULTS.md`.
+
+**H3 — Bank statement extraction:** For the project bank's statement PDFs, can
+transaction rows (date, description, debit, credit, balance) be extracted as a
+structured list suitable for `mark_cleared` loops?
+
+```python
+def extract_statement_transactions(pdf_path: str) -> list[dict]:
+    with pdfplumber.open(pdf_path) as pdf:
+        rows = []
+        for page in pdf.pages:
+            # extract_table() works well for consistently-formatted bank tables
+            tables = page.extract_table()
+            if tables:
+                rows.extend(tables)
+    return rows
+```
+
+**H4 — VirtioFS read-only mount for PDF directory:**
+
+```zsh
+# Mount a local invoices directory read-only into the container
+container run --rm \
+  --volume /data/project.gnucash:/data/project.gnucash \
+  --volume ~/Documents/invoices:/invoices:ro \
+  gnucash-mcp:latest \
+  python3 /src/scripts/spike-h.py
+```
+
+Confirm: container can read PDFs from `/invoices`, cannot write to it.
+
+**Pass criteria:**
+- `has_text_layer()` correctly identifies text-based vs scanned PDFs from sample set
+- Invoice extraction achieves ≥ 90% field accuracy across sample invoices (vendor,
+  ref, date, total correct without manual correction)
+- Bank statement extraction produces a structured row list matching the statement
+  register (spot-check 10 transactions)
+- Read-only mount confirmed: write attempt to `/invoices` fails with permission error
+- Extraction completes in < 2 seconds per PDF page (not a bottleneck)
+
+**Fail paths:**
+
+| Failure | Fallback |
+|---|---|
+| Invoices are scanned (no text layer) | Add `pytesseract` + `poppler` to Dockerfile for OCR; accept slower extraction and lower accuracy |
+| Field extraction unreliable (< 90%) | Fall back to Claude vision for extraction step; gpt-oss still handles tool call loop (token cost increases but loop is free) |
+| Bank statement layout not table-parseable | Use `pdfplumber` text extraction + regex; or Claude vision for statement page only |
+| VirtioFS `:ro` flag not honoured | Use filesystem permissions (`chmod 444`) on mount point as secondary guard |
+
+**Dockerfile additions if OCR fallback needed:**
+
+```dockerfile
+# Only add if Spike H shows scanned PDFs in practice
+RUN apt-get install -y tesseract-ocr poppler-utils && \
+    pip3 install --break-system-packages pytesseract pymupdf
+```
+
+---
+
 ### Phase 0 exit criteria
 
 All spikes must produce a written result (PASS or documented FAIL + chosen fallback)
@@ -388,6 +503,7 @@ before Phase 1 begins. Record results in `SPIKE_RESULTS.md`.
 | E — APFS snapshots | ☐ | |
 | F — HTTP transport + CoWork bridge | ☐ | |
 | G — Ubuntu 26.04 evaluation | ☐ (non-blocking; run after 26.04 release) | |
+| H — PDF extraction from directory mount | ☐ (non-blocking; run before Phase 6 PDF workflows) | |
 
 ---
 

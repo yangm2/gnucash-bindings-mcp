@@ -349,7 +349,14 @@ reasoning adds value over the local model's:
 ```
 get_budget_report() → str        — structured budget vs actual for Claude to analyse
 review_pending_ecos() → str      — list pending ECOs for Claude to recommend action
+process_invoices_from_dir(path, dry_run) → str  — extract + post all PDFs in a dir
+reconcile_from_statement(pdf_path, account_path, statement_balance, statement_date) → str
 ```
+
+The PDF tools pass a **path string** to the subagent — no PDF contents enter
+Claude's context. Extraction runs inside the container via `pdfplumber` (see
+Spike H). Claude pays only ~50 tokens for the path argument regardless of how
+many pages the PDFs contain.
 
 ### Subagent server implementation sketch
 
@@ -382,12 +389,46 @@ async def get_project_status() -> str:
         "concise paragraph summary of the project financial status."
     )
 
+@mcp.tool()
+async def process_invoices_from_dir(path: str, dry_run: bool = False) -> str:
+    """Extract and post all unprocessed invoice PDFs in a directory.
+    PDFs must be text-based (software-generated). dry_run=True validates
+    without posting. Returns summary of posted invoices or errors."""
+    instruction = (
+        f"Extract invoice fields from all PDF files in {path} using pdfplumber. "
+        f"For each invoice found, call receive_invoice with the extracted vendor, "
+        f"date, amount, invoice_ref, and expense_account. "
+        + ("Do not post — report what would be posted." if dry_run else
+           "Post each invoice and report results.")
+    )
+    return await run_accounting_task(instruction)
+
+@mcp.tool()
+async def reconcile_from_statement(
+    pdf_path: str,
+    account_path: str,
+    statement_balance: str,
+    statement_date: str,
+) -> str:
+    """Extract transactions from a bank statement PDF and reconcile
+    against the named account. Returns unmatched items for review."""
+    instruction = (
+        f"Extract all transactions from the bank statement PDF at {pdf_path} "
+        f"using pdfplumber. Then call reconcile_account('{account_path}', "
+        f"'{statement_balance}', '{statement_date}') and mark_cleared for each "
+        f"matching transaction. Return a list of any unmatched items."
+    )
+    return await run_accounting_task(instruction)
+
 ACCOUNTING_SYSTEM_PROMPT = """
 You are a GnuCash accounting agent for a construction project ledger.
 Always call __unlock_ledger__ first to load the current book state.
 Use void_transaction (not delete_transaction) for correcting posted entries.
 Confirm=True is required for delete_transaction and vendor_delete — only pass
 it when the instruction explicitly requests permanent deletion.
+When processing PDFs, use pdfplumber to extract text. If a PDF has no text
+layer (scanned), return an ExtractionError listing the filename so it can
+be handled manually or escalated to Claude vision.
 """
 ```
 
@@ -441,11 +482,69 @@ flowchart LR
     GPT -->|"tool chain"| Proxy
 ```
 
+### PDF workflows: path-based container mount
+
+When processing invoice or bank statement PDFs, pass a **directory path** rather
+than PDF contents. Claude pays ~50 tokens for the path string; `pdfplumber`
+running inside the container handles extraction at zero token cost.
+
+The Swift proxy mounts the PDF directory into the container read-only alongside
+the sparsebundle, configured at startup:
+
+```zsh
+gnucash-mcp start --pdf-dir ~/Documents/invoices
+```
+
+This adds a second VirtioFS mount (`/invoices:ro`) to the container alongside
+the existing `/data` (sparsebundle) mount. The container can read PDFs but
+cannot write to the source directory.
+
+```mermaid
+flowchart LR
+    Claude["Claude\ncoordinator"]
+    SubMCP["gnucash-subagent :8981\nprocess_invoices_from_dir\nreconcile_from_statement"]
+
+    subgraph container["Ubuntu 24 container"]
+        PyPDF["pdfplumber\ntext extraction"]
+        GNC["GnuCash Python bindings"]
+        PyPDF -->|"structured fields"| GNC
+    end
+
+    subgraph mounts["VirtioFS mounts"]
+        Book[("/data\nproject.gnucash\nread-write")]
+        PDFs[("/invoices\nPDF directory\nread-only")]
+    end
+
+    Claude -->|"process_invoices_from_dir\n('/invoices/april/')"| SubMCP
+    SubMCP -->|"tool calls"| container
+    container <--> Book
+    container -->|"reads"| PDFs
+```
+
+**Token cost with path-based approach:**
+
+| Session type | Claude tokens | vs. vision-based PDF input |
+|---|---|---|
+| Process 5 invoices (path arg) | ~500 | was ~15,000–25,000 |
+| Monthly bank reconciliation (path arg) | ~500 | was ~18,000–30,000 |
+| Quarterly reconciliation (path arg) | ~500 | was ~30,000+ |
+
+Token cost collapses to the baseline ~500–1,000 tokens regardless of PDF count
+or page length. Vision model capability becomes irrelevant for text-layer PDFs.
+
+**Fallback for scanned PDFs:** If Spike H finds that some PDFs lack a text layer,
+the container returns an `ExtractionError` naming the file. Claude can then request
+the specific file via vision input as a one-off, or the user can re-scan to PDF
+with text layer enabled. This keeps the common case (software-generated PDFs) cheap
+while handling exceptions without breaking the pipeline.
+
 ### Trade-offs
 
 | Consideration | Direct Claude | Hybrid coordinator |
 |---|---|---|
-| Claude token cost per session | ~7,600 tokens | ~1,000 tokens |
+| Claude token cost — ledger only | ~7,600 tokens | ~1,000 tokens |
+| Claude token cost — with PDF (path) | ~8,100 tokens | ~500 tokens |
+| Claude token cost — with PDF (vision) | ~25,000–35,000 tokens | ~1,000 tokens (extraction in container) |
 | Local model token cost | Zero | Zero (same) |
 | Accounting reasoning quality | Highest | gpt-oss:20b (good for most tasks) |
 | Claude visibility into steps | Full | Summary only |
@@ -453,11 +552,15 @@ flowchart LR
 | Infrastructure complexity | Low | Medium (extra MCP server) |
 | Suitable for ECO approval review | Yes | Partial (Claude sees summary, not detail) |
 | Suitable for bulk data entry | Yes | Better (local model handles loop) |
+| Suitable for PDF invoice processing | Yes (vision, expensive) | Yes (pdfplumber, ~free) |
+| Suitable for bank reconciliation | Yes (vision, expensive) | Yes (pdfplumber, ~free) |
 
 **Recommended approach:** Start with direct Claude (Option A) until you have a clear
 picture of which sessions are repetitive data entry (fund → invoice → pay loops) vs
 reasoning-heavy (ECO impact analysis, reconciliation discrepancy investigation).
-Move those repetitive sessions to the hybrid pattern once identified.
+Move those repetitive sessions to the hybrid pattern once identified. Run Spike H
+before building PDF workflows to confirm pdfplumber extraction quality on actual
+project documents.
 
 ---
 
@@ -482,10 +585,14 @@ quadrantChart
 
 | | Claude direct | gpt-oss:20b + deepagents | AFM | Hybrid (Claude + gpt-oss) |
 |---|---|---|---|---|
-| Per-session token cost | ~$0.04 | Free | Free | ~$0.005 |
+| Per-session token cost (ledger only) | ~$0.04 (API) / Pro flat | Free | Free | ~$0.005 (API) / Pro flat |
+| Per-session token cost (PDF via path) | ~$0.04 (path = ~50 tokens) | Free | Free | ~$0.003 |
+| Per-session token cost (PDF via vision) | ~$0.15–0.25 | Not supported | Not supported | ~$0.005 (Claude extracts, gpt-oss posts) |
 | Multi-step accounting | Excellent | Good | Poor | Good |
+| PDF extraction (text-layer) | Via vision (expensive) | Via pdfplumber (free) | Via pdfplumber (free) | Via pdfplumber (free) |
+| PDF extraction (scanned) | Via vision (expensive) | Needs OCR fallback | Needs OCR fallback | Claude vision for scanned only |
 | Offline capable | No | Yes | Yes | Partial (Claude needs network) |
 | MCP adapter needed | No | `langchain-mcp-adapters` | Custom Swift shim | Both |
-| Infrastructure to build | None | Minimal | Significant | Medium |
+| Infrastructure to build | None | Minimal | Significant | Medium (+ Spike H validation) |
 | Transparency to user | Full | Full | N/A | Partial |
-| Recommended for | All tasks | Offline / cost-sensitive | Pre-processing only | High-volume data entry |
+| Recommended for | Complex reasoning, ECO review | Offline / cost-sensitive | Pre-processing only | High-volume data entry + PDF workflows |
