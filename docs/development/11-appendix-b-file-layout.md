@@ -1,13 +1,28 @@
 # Appendix B — File Layout
 
-## Appendix B — File Layout
-
 ```
 gnucash-mcp/
-├── DEVELOPMENT.md             ← this file
+├── DEVELOPMENT.md             ← index; full docs in docs/development/
 ├── SPIKE_RESULTS.md           ← Phase 0 outcomes (fill in as spikes run)
 ├── TEST_RESULTS.md            ← manual test log
 ├── README.md                  ← setup and daily-use guide (Phase 5+)
+│
+├── docs/
+│   └── development/           ← split development docs
+│       ├── 00-overview.md     ← stack summary, KU table, MC-1 – MC-10
+│       ├── 01-phase-00-spikes.md
+│       ├── 02-phase-01-core-ledger.md
+│       ├── 03-phase-02-book-management.md
+│       ├── 04-phase-03-transaction-crud.md
+│       ├── 05-phase-04-budget-eco.md
+│       ├── 06-phase-05-infrastructure.md
+│       ├── 07-phase-06-project-tools.md
+│       ├── 08-phase-07-reconciliation.md
+│       ├── 09-phase-08-hardening.md
+│       ├── 10-appendix-a-testing.md
+│       ├── 11-appendix-b-file-layout.md  ← this file
+│       ├── 12-appendix-c-dependencies.md
+│       └── 13-appendix-d-prior-art.md
 │
 ├── Package.swift              ← Swift package (gnucash-mcp proxy binary)
 ├── Package.resolved
@@ -103,6 +118,3 @@ project.gnucash.20250401120000.log
 mcp-wal.jsonl                              (write-ahead log)
 mcp.log                                    (tool call log, Phase 8)
 ```
-
----
-

@@ -1,7 +1,5 @@
 # Phase 0 — Foundations and Spike Resolution
 
-## Phase 0 — Foundations and Spike Resolution
-
 **Goal:** Validate all known unknowns. Nothing in Phase 0 is production code.
 All spikes are throwaway scripts. Phase 0 gates all subsequent phases.
 

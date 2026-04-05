@@ -1,7 +1,5 @@
 # Phase 6 — Project-Specific MCP Tools
 
-## Phase 6 — Project-Specific MCP Tools
-
 **Goal:** Project-specific tools: budget tracking, AP aging,
 interest income, and tranche management. Claude can answer project finance questions
 directly from the ledger.

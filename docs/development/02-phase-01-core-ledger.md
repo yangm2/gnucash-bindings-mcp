@@ -1,7 +1,5 @@
 # Phase 1 — Core Ledger and MCP Skeleton
 
-## Phase 1 — Core Ledger and MCP Skeleton
-
 **Goal:** A working MCP server that can post a double-entry journal entry and read
 account balances. End-to-end: Claude calls a tool, a transaction appears in GnuCash.
 

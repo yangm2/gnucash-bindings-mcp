@@ -1,7 +1,5 @@
 # Appendix C — Dependency Versions
 
-## Appendix C — Dependency Versions
-
 ### Swift proxy (`Sources/gnucash-mcp/`)
 
 | Component | Version | Source |

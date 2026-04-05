@@ -1,7 +1,5 @@
 # Phase 3 — Transaction CRUD and Audit Log
 
-## Phase 3 — Transaction CRUD and Audit Log
-
 **Goal:** Complete the write surface. Correct errors in posted transactions without
 manual GnuCash intervention. Expose change history to Claude so it can answer
 "what changed and when" questions. Closes the gap with ninetails-io's transaction

@@ -1,7 +1,5 @@
 # Phase 4 — Budget and ECO Tools
 
-## Phase 4 — Budget and ECO Tools
-
 **Goal:** Replace the hardcoded ROM constants approach with live GnuCash native
 budgets. The GC's pre-construction pricing enters the book as a real GnuCash
 budget object; `get_budget_vs_actual()` queries it rather than Python constants.

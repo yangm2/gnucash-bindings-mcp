@@ -1,7 +1,5 @@
 # Appendix A — Test Execution
 
-## Appendix A — Test Execution
-
 Tests are named `T{phase}.{milestone}.{number}`. Within a milestone, run in
 order. Milestones within a phase run in order.
 

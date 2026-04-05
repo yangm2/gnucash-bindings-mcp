@@ -1,7 +1,5 @@
 # Phase 5 — Infrastructure: Sparsebundle, Wrappers, and Snapshots
 
-## Phase 5 — Infrastructure: Sparsebundle, Wrappers, and Snapshots
-
 **Goal:** Harden the operational story. The sparsebundle is the authoritative
 storage medium. The zsh wrappers handle the full lifecycle cleanly. Snapshots work.
 

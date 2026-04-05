@@ -1,7 +1,5 @@
 # Phase 8 — Hardening and Claude Desktop Integration
 
-## Phase 8 — Hardening and Claude Desktop Integration
-
 **Goal:** Production-ready reliability for a project expected to run 18–24 months.
 The MCP server is the default interface; macOS GnuCash is the occasional inspector.
 

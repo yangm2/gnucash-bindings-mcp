@@ -1,7 +1,5 @@
 # Phase 7 — Reconciliation and Reporting
 
-## Phase 7 — Reconciliation and Reporting
-
 **Goal:** Bank reconciliation workflow and exportable reports for tax and
 record-keeping purposes.
 

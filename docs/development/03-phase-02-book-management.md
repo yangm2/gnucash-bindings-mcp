@@ -1,7 +1,5 @@
 # Phase 2 — Book Management and Vendor Tools
 
-## Phase 2 — Book Management and Vendor Tools
-
 **Goal:** Claude can set up and maintain the chart of accounts and add new
 vendors/subcontractors as they are hired. These tools are used infrequently
 (once at setup, then as new subs are brought on) but must be reliable.

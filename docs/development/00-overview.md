@@ -1,9 +1,5 @@
 # GnuCash MCP Server — Overview
 
-# DEVELOPMENT.md
-# GnuCash MCP Server — Construction Project Ledger
-
-## Overview
 
 This document plans the phased development of a GnuCash-backed MCP (Model Context
 Protocol) server that Claude uses as the authoritative read-write interface to the
