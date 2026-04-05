@@ -38,6 +38,13 @@ __unlock_ledger__:       ~300 tokens
 Total:                 ~7,600 tokens per session
 ```
 
+```mermaid
+pie title Typical operational session token breakdown (~7,600 tokens)
+    "Tool catalog loaded at start" : 4300
+    "__unlock_ledger__ call + response" : 300
+    "9 tool calls (input + output)" : 3000
+```
+
 Only Claude charges per token. Ollama (gpt-oss) and Apple Foundation Model (AFM)
 have zero per-token cost — the only cost is electricity and time.
 
@@ -62,6 +69,30 @@ all designed around Claude's behaviour.
 For a construction project with one or two Claude sessions per week, annual cost is
 well under $50. This is low enough that token cost should not drive architecture
 decisions unless session frequency is very high.
+
+```mermaid
+flowchart LR
+    CD["Claude Desktop\n(streamable-http)"]
+
+    subgraph proxy["gnucash-mcp Swift proxy · :8980"]
+        direction TB
+        Static["ToolCatalog + StaticResources\ncompiled-in — no container"]
+        Pool["Container pool\nsize 1 · 5s TTL"]
+    end
+
+    subgraph ctr["Ubuntu 24 container"]
+        Disp["Python dispatcher\none-shot stdin→stdout"]
+        GNC["GnuCash Python bindings"]
+    end
+
+    Book[("project.gnucash\nsparsebundle")]
+
+    CD -->|"initialize · tools/list\nresources/read static"| Static
+    CD -->|"tools/call"| Pool
+    Pool -->|"ContainerAPIClient\nstdin/stdout"| Disp
+    Disp --> GNC
+    GNC <-->|"XML"| Book
+```
 
 **Strengths:**
 - Native MCP support — no adapter layer
@@ -107,6 +138,34 @@ async with MultiServerMCPClient({
     tools = mcp_client.get_tools()
     agent = create_agent(llm, tools)
     result = await agent.ainvoke({"messages": [("user", "What is the current AP balance?")]})
+```
+
+```mermaid
+flowchart LR
+    User["User"]
+
+    subgraph local["Local machine (fully offline)"]
+        DA["deepagents\nLangGraph agent"]
+        GPT["gpt-oss:20b\nOllama · 14GB · 128K ctx"]
+        Adapt["langchain-mcp-adapters\nMCP client"]
+
+        subgraph proxy["gnucash-mcp Swift proxy · :8980"]
+            Pool["Container pool"]
+        end
+
+        subgraph ctr["Ubuntu 24 container"]
+            GNC["GnuCash Python bindings"]
+        end
+
+        Book[("project.gnucash\nsparsebundle")]
+    end
+
+    User -->|"instruction"| DA
+    DA <-->|"tool calls\n(function calling)"| GPT
+    DA --> Adapt
+    Adapt -->|"MCP HTTP"| Pool
+    Pool --> GNC
+    GNC <-->|"XML"| Book
 ```
 
 **Configuration notes:**
@@ -185,6 +244,27 @@ The practical role for AFM is as a **lightweight pre-processor or UI layer** —
 parsing a voice command or shortcut into a structured request, then passing it to
 one of the other options to execute. See the hybrid architecture section below.
 
+```mermaid
+flowchart TB
+    subgraph viable["Viable: AFM as intent pre-processor"]
+        direction LR
+        Input["Voice / Shortcut\ninput"]
+        AFM1["AFM\nFoundationModels\nframework"]
+        Struct["Structured intent\n+ params"]
+        Exec["Option A or B\nexecutes"]
+        GNC1["gnucash-mcp\n:8980"]
+        Input --> AFM1 -->|"classify + structure"| Struct --> Exec --> GNC1
+    end
+
+    subgraph notviable["Not viable: AFM direct to MCP (requires brittle shim)"]
+        direction LR
+        AFM2["AFM\n@Generable structs\nstatic type system"]
+        Shim["Custom Swift shim\nhard-coded catalog\nmanual JSON translation"]
+        GNC2["gnucash-mcp\n:8980"]
+        AFM2 -.->|"needs"| Shim -.-> GNC2
+    end
+```
+
 ---
 
 ## Option D — Hybrid: Claude as coordinator, local model as accounting executor
@@ -199,12 +279,32 @@ Claude acts as the **user-facing coordinator** — it understands intent, plans 
 work, and summarises results. A separate **subagent MCP server** wraps a local model
 (gpt-oss:20b or AFM) and exposes a single high-level tool to Claude:
 
-```
-Claude Desktop / CoWork
-  └── calls: run_accounting_task(instruction: str) → summary: str
-        └── Subagent MCP server (new, Swift or Python)
-              └── gpt-oss:20b via deepagents / LangGraph
-                    └── gnucash-mcp (localhost:8980) — full tool catalog
+```mermaid
+flowchart TB
+    User["User"]
+
+    subgraph paid["Paid Claude context  (~1,000 tokens/delegation)"]
+        Claude["Claude Sonnet\ncoordinator\n2 tools visible"]
+    end
+
+    subgraph free["Free local context  (36 tools, zero token cost)"]
+        SubMCP["gnucash-subagent\nFastMCP · :8981\nrun_accounting_task\nget_project_status"]
+        DA["deepagents\nLangGraph"]
+        GPT["gpt-oss:20b\nOllama"]
+        SubMCP <--> DA <-->|"function calls"| GPT
+    end
+
+    subgraph gnucash["gnucash-mcp · :8980  (existing)"]
+        Proxy["Swift proxy\n36 tools"]
+        Pool["Container pool\nUbuntu 24"]
+        Book[("project.gnucash\nsparsebundle")]
+        Proxy --> Pool --> Book
+    end
+
+    User --> Claude
+    Claude -->|"run_accounting_task(instruction)\nor get_project_status()"| SubMCP
+    Claude -.->|"direct reads\n(optional)"| Proxy
+    DA -->|"MCP HTTP · full tool catalog"| Proxy
 ```
 
 Claude never sees the 36 gnucash-mcp tool schemas. It only sees one tool:
@@ -324,6 +424,23 @@ apply — AFM cannot reliably handle multi-step tool chains. A practical comprom
 This can be implemented as a router inside the subagent server that dispatches to
 AFM or gpt-oss based on the detected intent of the instruction.
 
+```mermaid
+flowchart LR
+    Claude["Claude\ncoordinator"]
+    SubMCP["gnucash-subagent\n:8981"]
+    Router{"Intent\nrouter"}
+    AFM["AFM\nNeural Engine\nread-only · single call"]
+    GPT["gpt-oss:20b\nOllama\nmulti-step writes"]
+    Proxy["gnucash-mcp\n:8980"]
+
+    Claude -->|"instruction"| SubMCP
+    SubMCP --> Router
+    Router -->|"read / summarise\nget_project_status\nget_budget_report"| AFM
+    Router -->|"write / multi-step\nreceive_invoice · pay\neco_approve · reconcile"| GPT
+    AFM -->|"single tool/call"| Proxy
+    GPT -->|"tool chain"| Proxy
+```
+
 ### Trade-offs
 
 | Consideration | Direct Claude | Hybrid coordinator |
@@ -345,6 +462,23 @@ Move those repetitive sessions to the hybrid pattern once identified.
 ---
 
 ## Comparison summary
+
+```mermaid
+quadrantChart
+    title Model options — token cost vs accounting capability
+    x-axis "Zero marginal cost" --> "Per-token cost"
+    y-axis "Limited capability" --> "Full accounting capability"
+    quadrant-1 Best for complex reasoning tasks
+    quadrant-2 High cost, limited benefit
+    quadrant-3 Pre-processing only
+    quadrant-4 Best local alternative
+    Claude Sonnet: [0.90, 0.95]
+    gpt-oss 120B: [0.08, 0.82]
+    gpt-oss 20B: [0.12, 0.65]
+    Hybrid D: [0.40, 0.88]
+    AFM direct: [0.05, 0.12]
+    AFM pre-processor: [0.05, 0.35]
+```
 
 | | Claude direct | gpt-oss:20b + deepagents | AFM | Hybrid (Claude + gpt-oss) |
 |---|---|---|---|---|
