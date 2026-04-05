@@ -20,6 +20,7 @@ Full documentation is split into focused files under [docs/development/](docs/de
 - [07-phase-06-project-tools.md](docs/development/07-phase-06-project-tools.md) — Phase 6: Project-Specific MCP Tools (M6.1–M6.4)
 - [08-phase-07-reconciliation.md](docs/development/08-phase-07-reconciliation.md) — Phase 7: Reconciliation and Reporting (M7.1–M7.3)
 - [09-phase-08-hardening.md](docs/development/09-phase-08-hardening.md) — Phase 8: Hardening and Claude Desktop Integration (M8.1–M8.5)
+- [15-phase-09-instrumentation.md](docs/development/15-phase-09-instrumentation.md) — Phase 9: Observability and Hybrid Architecture Profiling (M9.1–M9.4)
 
 ## Appendices
 

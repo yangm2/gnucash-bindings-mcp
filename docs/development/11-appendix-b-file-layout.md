@@ -22,7 +22,9 @@ gnucash-mcp/
 │       ├── 10-appendix-a-testing.md
 │       ├── 11-appendix-b-file-layout.md  ← this file
 │       ├── 12-appendix-c-dependencies.md
-│       └── 13-appendix-d-prior-art.md
+│       ├── 13-appendix-d-prior-art.md
+│       ├── 14-appendix-e-model-options.md
+│       └── 15-phase-09-instrumentation.md
 │
 ├── Package.swift              ← Swift package (gnucash-mcp proxy binary)
 ├── Package.resolved
@@ -42,6 +44,8 @@ gnucash-mcp/
 │       ├── ContainerDispatch.swift ← ContainerAPIClient stdin/stdout round-trip
 │       ├── VolumeMount.swift  ← hdiutil attach/detach via Process
 │       ├── Snapshot.swift     ← tmutil / cp -c pre-session snapshot (Spike E result)
+│       ├── Metrics.swift      ← CallRecord + SessionSummary; writes metrics.jsonl (M9.1)
+│       ├── MetricsCommand.swift ← gnucash-mcp metrics subcommand + --since/--json flags
 │       └── JSONRPCTypes.swift ← Codable MCP message types
 │
 ├── Tests/
@@ -59,6 +63,7 @@ gnucash-mcp/
 │   ├── dispatch.py            ← routes JSON-RPC method+name to handler (M1.5)
 │   ├── session.py             ← GnuCash session manager (MC-2)
 │   ├── wal.py                 ← write-ahead log (MC-3)
+│   ├── instrumentation.py     ← timing context manager; writes dispatch-timing.jsonl (M9.2)
 │   ├── budget_constants.py    ← professional fee contract values (example vendors)
 │   └── tools/
 │       ├── read.py            ← Tier 1 read-only tools (M1.5)
@@ -94,6 +99,7 @@ gnucash-mcp/
 │   ├── init_book.py           ← chart of accounts initialization (M1.2)
 │   ├── create-book-volume.zsh ← sparsebundle one-time setup (M5.1)
 │   ├── verify-backup.zsh      ← backup verification (M8.3)
+│   ├── analyze-sessions.py    ← hybrid readiness report from metrics.jsonl (M9.4)
 │   └── spike/                 ← Phase 0 throwaway scripts (delete after P0)
 │       ├── spike-a-bindings.sh
 │       ├── spike-b-virtiofs.zsh
@@ -116,5 +122,14 @@ project.gnucash
 project.gnucash.20250401120000.gnucash   (GnuCash auto-backup)
 project.gnucash.20250401120000.log
 mcp-wal.jsonl                              (write-ahead log)
-mcp.log                                    (tool call log, Phase 8)
+mcp.log                                    (tool call narrative log, Phase 8)
+dispatch-timing.jsonl                      (per-phase timing breakdown, Phase 9)
+```
+
+In `~/.local/share/gnucash-mcp/` (macOS host, outside sparsebundle):
+```
+proxy.log           (proxy-level narrative log, M8.1)
+metrics.jsonl       (per-call records: latency, cold-start, response size, M9.1)
+sessions.jsonl      (per-session summaries + hybrid_candidate flag, M9.3)
+HYBRID_READINESS.md (analysis report from analyze-sessions.py, M9.4)
 ```
