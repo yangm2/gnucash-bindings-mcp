@@ -374,7 +374,7 @@ the Swift layer receives protocol requests and dispatches containers via
 - Dynamic resource queries (`gnucash://vendors`)
 - Single-request stdin→stdout JSON-RPC protocol:
   ```python
-  # gnucash_mcp/__main__.py
+  # worker/gnucash_mcp/__main__.py
   import json, sys
   from gnucash_mcp.dispatch import dispatch
 

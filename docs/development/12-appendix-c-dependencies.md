@@ -15,7 +15,7 @@
 the swift.org standalone toolchain — it will fail to link against system frameworks.
 This matches the requirement in `buck2-macos-local-reapi`.
 
-### Python container (`Docker/Dockerfile`, `src/`)
+### Python container (`worker/Dockerfile`, `worker/gnucash_mcp/`)
 
 | Component | Version | Source |
 |---|---|---|
@@ -31,7 +31,7 @@ without migration prompt.
 **Python dependency note:** The Python container does not depend on FastMCP or
 uvicorn. The only MCP dependency is the base `mcp` SDK (for JSON-RPC type
 definitions if desired, or omit entirely and use plain `json`). Pin the version
-used at Phase 1 build time in `pyproject.toml`.
+used at Phase 1 build time in `worker/pyproject.toml`.
 
 ### macOS GUI
 

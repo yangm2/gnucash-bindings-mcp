@@ -9,7 +9,7 @@ CRUD feature set.
 
 ### M3.1 — Transaction correction tools
 
-**Deliverables (add to `src/tools/write.py`):**
+**Deliverables (add to `worker/gnucash_mcp/tools/write.py`):**
 
 ```python
 @app.tool()
@@ -128,7 +128,7 @@ T3.1.14 WAL entry transaction_guid matches the guid field in get_transaction out
 
 ### M3.2 — Audit log tool
 
-**Deliverables (add to `src/tools/read.py`):**
+**Deliverables (add to `worker/gnucash_mcp/tools/read.py`):**
 
 ```python
 @app.tool()

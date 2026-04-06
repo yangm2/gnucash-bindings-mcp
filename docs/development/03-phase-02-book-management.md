@@ -9,7 +9,7 @@ Resource-based lazy context pattern validated in practice.
 
 ### M2.1 — Book setup tools
 
-**Deliverables (`src/tools/book.py`):**
+**Deliverables (`worker/gnucash_mcp/tools/book.py`):**
 
 ```python
 @app.tool()
@@ -90,7 +90,7 @@ T2.1.14 Claude fetches gnucash://book-setup-guide before calling book_add_accoun
 
 ### M2.2 — Vendor management tools
 
-**Deliverables (`src/tools/vendor.py`):**
+**Deliverables (`worker/gnucash_mcp/tools/vendor.py`):**
 
 ```python
 @app.tool()

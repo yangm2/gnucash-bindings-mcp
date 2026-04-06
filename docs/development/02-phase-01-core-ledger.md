@@ -8,29 +8,42 @@ account balances. End-to-end: Claude calls a tool, a transaction appears in GnuC
 ### M1.1 — Repository and container setup
 
 **Deliverables:**
-- `Docker/Dockerfile` — Ubuntu 26.04 + `python3-gnucash` from universe (no PPA):
+- `worker/Dockerfile` — multi-stage (base / prod / dev), self-contained build context:
 
 ```dockerfile
-FROM ubuntu:26.04
+# build: container build -t gnucash-mcp:latest worker/
+FROM ubuntu:26.04 AS base
 RUN apt-get update && \
-    apt-get install -y python3-gnucash python3-pip && \
+    apt-get install -y --no-install-recommends \
+      gnucash python3-gnucash python3-pip python3-dev && \
     rm -rf /var/lib/apt/lists/*
-
-# Python project installed into container image
 COPY pyproject.toml /src/pyproject.toml
-COPY src/ /src/src/
+COPY gnucash_mcp/ /src/gnucash_mcp/
 RUN pip3 install --break-system-packages -e /src
-
+WORKDIR /data
+ENV GNUCASH_BOOK_PATH=/data/project.gnucash
 ENTRYPOINT ["python3", "-m", "gnucash_mcp"]
+
+FROM base AS prod
+COPY scripts/ /src/scripts/
+
+FROM base AS dev
+RUN apt-get update && apt-get install -y curl ca-certificates && rm -rf /var/lib/apt/lists/* && \
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+RUN uv tool install ruff && uv tool install ty
+
+FROM prod  # default target
 ```
 
-- `Makefile` with targets: `build`, `shell`, `test`
-- `pyproject.toml` for uv-managed Python project
+- `.mise.toml` at repo root with tasks: `build`, `build-dev`, `shell`, `shell-dev`,
+  `run`, `test`, `lint`, `fmt`, `init-book`, `clean`
+- `worker/pyproject.toml` — Python package metadata + dev deps (ruff, ty, pytest)
 
 **Tests:**
 ```
-T1.1.1  Container image builds without error (PPA add-apt-repository succeeds)
-T1.1.2  `make shell` drops into container with /data mounted
+T1.1.1  Container image builds without error (mise build succeeds)
+T1.1.2  mise shell drops into container with /data mounted
 T1.1.3  python3 -c "import gnucash" succeeds inside container
 T1.1.4  python3 -c "import gnucash; print(gnucash.gnucash_core_c.gnc_version())"
         prints GnuCash version matching Spike A result
@@ -42,7 +55,7 @@ T1.1.5  /data is writable from inside the container (VirtioFS confirmed)
 ### M1.2 — Book initialization
 
 **Deliverables:**
-- `scripts/init_book.py` — creates a new GnuCash XML book with the full chart of
+- `worker/scripts/init_book.py` — creates a new GnuCash XML book with the full chart of
   accounts defined in MC-6
 - Idempotent: running twice does not create duplicate accounts
 
@@ -61,7 +74,7 @@ T1.2.5  macOS GnuCash 5.15 can open the file created by the container version
 ### M1.3 — Write-ahead log
 
 **Deliverables:**
-- `src/wal.py` — WAL writer/reader:
+- `worker/gnucash_mcp/wal.py` — WAL writer/reader:
   - `append(entry: dict) -> str` — writes entry, returns generated `id`
   - `mark_committed(entry_id: str)` — sets `committed_at`
   - `pending() -> list[dict]` — entries without `committed_at`
@@ -93,7 +106,7 @@ T1.3.6  WAL with mixed committed and pending entries returns only pending from p
 ### M1.4 — GnuCash session manager
 
 **Deliverables:**
-- `src/session.py`:
+- `worker/gnucash_mcp/session.py`:
   - `open_session(path, is_new=False)` — opens GnuCash session with correct
     `SessionOpenMode`; for new books calls `session.save()` immediately after
     opening, before any mutations (see design notes below)
@@ -236,7 +249,7 @@ JSON-RPC `tools/call` request on stdin, dispatches to the correct tool function,
 writes the response to stdout, and exits. No uvicorn, no FastMCP, no HTTP server.
 
 **Deliverables:**
-- `src/__main__.py` — one-shot stdin→stdout dispatcher:
+- `worker/gnucash_mcp/__main__.py` — one-shot stdin→stdout dispatcher:
 
 ```python
 # src/__main__.py
@@ -254,7 +267,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- `src/dispatch.py` — routes `tools/call` method+name to the correct handler:
+- `worker/gnucash_mcp/dispatch.py` — routes `tools/call` method+name to the correct handler:
 
 ```python
 # src/dispatch.py
@@ -370,7 +383,7 @@ Static resources served by proxy (no container):
 Dynamic resources (require container):
 - `gnucash://vendors` — live vendor list with AP balances
 
-**Read-only Tier 1 tools (in `src/tools/read.py`):**
+**Read-only Tier 1 tools (in `worker/gnucash_mcp/tools/read.py`):**
 - `get_account_balance(account_path: str) -> dict`
 - `list_accounts(parent_path: str | None) -> list[dict]`
 - `list_transactions(account_path: str, limit: int = 20) -> list[dict]`
@@ -403,7 +416,7 @@ T1.5.12 Via Swift proxy: CoWork can call get_project_summary() (manual;
 ### M1.6 — Core MCP tools (write)
 
 **Deliverables:**
-- Write tools in `src/tools/write.py`, registered in `src/dispatch.py`:
+- Write tools in `worker/gnucash_mcp/tools/write.py`, registered in `worker/gnucash_mcp/dispatch.py`:
   - `post_transaction(date, description, splits: list[dict]) -> dict`
     - splits: `[{account_path, amount, memo}]`, must sum to zero
   - `fund_project(date, amount, memo) -> dict`

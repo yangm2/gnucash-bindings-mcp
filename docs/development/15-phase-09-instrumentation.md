@@ -224,7 +224,7 @@ T9.3.5  total_response_kb sum matches sum of responseSizeBytes in CallRecords fo
 
 ### M9.4 — Hybrid architecture readiness report
 
-**Deliverables:** `scripts/analyze-sessions.py` — offline analysis script.
+**Deliverables:** `worker/scripts/analyze-sessions.py` — offline analysis script.
 
 Reads `metrics.jsonl` and `dispatch-timing.jsonl`; produces a Markdown report
 `HYBRID_READINESS.md` alongside a JSON summary for machine consumption.

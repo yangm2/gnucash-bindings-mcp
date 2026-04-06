@@ -8,7 +8,7 @@ storage medium. The zsh wrappers handle the full lifecycle cleanly. Snapshots wo
 ### M5.1 — Sparsebundle creation and book migration
 
 **Deliverables:**
-- `scripts/create-book-volume.zsh` — one-time setup:
+- `worker/scripts/create-book-volume.zsh` — one-time setup:
   - Creates `~/books/project.sparsebundle` (100MB initial, APFS)
   - Attaches read-write at `/Volumes/GnuCash-Project`
   - Moves Phase 1 `project.gnucash` into the volume

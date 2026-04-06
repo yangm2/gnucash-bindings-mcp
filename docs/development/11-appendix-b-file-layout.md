@@ -1,15 +1,16 @@
 # Appendix B — File Layout
 
 ```
-gnucash-mcp/
+gnucash-bindings-mcp/
+├── .mise.toml                 ← root task orchestrator (mise build, mise run, etc.)
+├── .gitignore
+├── .test-data/                ← ephemeral; gitignored; GnuCash book + WAL used during dev
 ├── DEVELOPMENT.md             ← index; full docs in docs/development/
-├── SPIKE_RESULTS.md           ← Phase 0 outcomes (fill in as spikes run)
 ├── TEST_RESULTS.md            ← manual test log
-├── README.md                  ← setup and daily-use guide (Phase 5+)
 │
 ├── docs/
-│   └── development/           ← split development docs
-│       ├── 00-overview.md     ← stack summary, KU table, MC-1 – MC-10
+│   └── development/
+│       ├── 00-overview.md
 │       ├── 01-phase-00-spikes.md
 │       ├── 02-phase-01-core-ledger.md
 │       ├── 03-phase-02-book-management.md
@@ -26,95 +27,90 @@ gnucash-mcp/
 │       ├── 14-appendix-e-model-options.md
 │       └── 15-phase-09-instrumentation.md
 │
-├── Package.swift              ← Swift package (gnucash-mcp proxy binary)
-├── Package.resolved
-├── .swift-version             ← pinned Swift toolchain (Xcode-bundled, macOS 26)
-├── .swiftformat
+├── spikes/                    ← Phase 0 artifacts (historical reference, not built in CI)
+│   ├── docker/
+│   │   ├── Dockerfile.spike-a ← GnuCash bindings validation
+│   │   ├── Dockerfile.spike-g ← Ubuntu 26.04 base evaluation
+│   │   └── Dockerfile.spike-h ← PDF extraction
+│   ├── scripts/
+│   │   ├── spike-a.py         ← GnuCash API + lock detection
+│   │   ├── spike-b.sh         ← VirtioFS read/write
+│   │   ├── spike-c.py         ← schema compatibility
+│   │   ├── spike-d.sh         ← read-only mount enforcement
+│   │   ├── spike-e.sh         ← APFS cp -c backup timing
+│   │   └── spike-h.py         ← PDF extraction (pdfplumber)
+│   └── spike-f/               ← Spike F: Swift MCP stdio proxy (intact SwiftPM package)
+│       ├── Package.swift
+│       ├── Package.resolved
+│       ├── Sources/spike-f/main.swift
+│       ├── Dockerfile.echo
+│       └── run.sh
 │
-├── Sources/
-│   └── gnucash-mcp/           ← Swift proxy executable (MC-9)
-│       ├── main.swift         ← @main, ArgumentParser entrypoint
-│       ├── CLI.swift          ← start/stop/status/install/snapshot subcommands
-│       ├── MCPHTTPServer.swift ← NIO HTTP server on localhost:8980
-│       ├── MCPHandler.swift   ← routes initialize/tools/resources to catalog or container
-│       ├── ToolCatalog.swift  ← compiled tool schemas, Tier 1 + Tier 2 (MC-8, MC-9)
-│       ├── StaticResources.swift ← session-context, book-setup-guide, vendor-guide,
-│       │                           expected-chart, budget-guide, eco-guide (no container)
-│       ├── ContainerPool.swift ← size-1 TTL pool; sleep/wake recovery (KU-11)
-│       ├── ContainerDispatch.swift ← ContainerAPIClient stdin/stdout round-trip
-│       ├── VolumeMount.swift  ← hdiutil attach/detach via Process
-│       ├── Backup.swift       ← cp -c pre-session clone-copy backup (Spike E: tmutil not viable)
-│       ├── Metrics.swift      ← CallRecord + SessionSummary; writes metrics.jsonl (M9.1)
-│       ├── MetricsCommand.swift ← gnucash-mcp metrics subcommand + --since/--json flags
-│       └── JSONRPCTypes.swift ← Codable MCP message types
+├── proxy/                     ← Swift MCP proxy (Phase 5, M5.2)
+│   ├── Package.swift          ← SwiftPM manifest (stub until M5.2)
+│   ├── Package.resolved
+│   ├── Sources/
+│   │   └── gnucash-mcp/
+│   │       ├── main.swift            ← @main, ArgumentParser entrypoint
+│   │       ├── CLI.swift             ← start/stop/status/install/snapshot subcommands
+│   │       ├── MCPHTTPServer.swift   ← NIO HTTP server on localhost:8980
+│   │       ├── MCPHandler.swift      ← routes initialize/tools/resources
+│   │       ├── ToolCatalog.swift     ← compiled tool schemas, Tier 1 + Tier 2
+│   │       ├── StaticResources.swift ← session-context, book-setup-guide, etc.
+│   │       ├── ContainerPool.swift   ← size-1 TTL pool; sleep/wake recovery
+│   │       ├── ContainerDispatch.swift ← stdin/stdout round-trip to worker
+│   │       ├── VolumeMount.swift     ← hdiutil attach/detach
+│   │       ├── Backup.swift          ← cp -c pre-session clone-copy
+│   │       ├── Metrics.swift         ← CallRecord + SessionSummary (M9.1)
+│   │       ├── MetricsCommand.swift  ← gnucash-mcp metrics subcommand
+│   │       └── JSONRPCTypes.swift    ← Codable MCP message types
+│   └── Tests/
+│       └── gnucash-mcpTests/
+│           ├── ToolCatalogTests.swift
+│           ├── ContainerPoolTests.swift
+│           └── JSONRPCTests.swift
 │
-├── Tests/
-│   └── gnucash-mcpTests/      ← Swift unit tests for proxy logic
-│       ├── ToolCatalogTests.swift
-│       ├── ContainerPoolTests.swift
-│       └── JSONRPCTests.swift
-│
-├── Docker/
-│   └── Dockerfile             ← Ubuntu 26.04 + python3-gnucash from universe (no PPA)
-│
-├── pyproject.toml             ← uv-managed Python project (container image contents)
-├── src/
-│   ├── __main__.py            ← one-shot stdin→stdout dispatcher entry point (M1.5)
-│   ├── dispatch.py            ← routes JSON-RPC method+name to handler (M1.5)
-│   ├── session.py             ← GnuCash session manager (MC-2)
-│   ├── wal.py                 ← write-ahead log (MC-3)
-│   ├── instrumentation.py     ← timing context manager; writes dispatch-timing.jsonl (M9.2)
-│   ├── budget_constants.py    ← professional fee contract values (example vendors)
-│   └── tools/
-│       ├── read.py            ← Tier 1 read-only tools (M1.5)
-│       ├── write.py           ← Tier 1 write tools (M1.6)
-│       ├── book.py            ← Tier 2 book_* tools (M2.1)
-│       ├── vendor.py          ← Tier 2 vendor_* tools (M2.2)
-│       ├── budget.py          ← Tier 2 budget_* tools — GnuCash native budget (M4.1)
-│       ├── eco.py             ← Tier 2 eco_* tools — change order tracking (M4.2)
-│       └── project.py         ← project-specific tools (Phase 6)
-│
-├── resources/                 ← Source content for Swift StaticResources.swift
-│   ├── session_context.json   ← gnucash://session-context (tool groups, conventions, resource index)
-│   ├── book_setup_guide.md    ← gnucash://book-setup-guide
-│   ├── vendor_guide.md        ← gnucash://vendor-guide
-│   ├── expected_chart.json    ← gnucash://expected-chart (MC-6 account structure)
-│   ├── budget_guide.md        ← gnucash://budget-guide (Phase 4)
-│   └── eco_guide.md           ← gnucash://eco-guide (Phase 4)
-│
-├── tests/                     ← Python pytest suite (runs inside container)
-│   ├── conftest.py
-│   ├── test_wal.py            ← T1.3.x
-│   ├── test_session.py        ← T1.4.x
-│   ├── test_read_tools.py     ← T1.5.x (dispatch-level, not HTTP)
-│   ├── test_write_tools.py    ← T1.6.x
-│   ├── test_book_tools.py     ← T2.1.x
-│   ├── test_vendor_tools.py   ← T2.2.x
-│   ├── test_crud_tools.py     ← T3.1.x (transaction correction)
-│   ├── test_audit_log.py      ← T3.2.x
-│   ├── test_budget_tools.py   ← T4.1.x (GnuCash budget CRUD)
-│   ├── test_eco_tools.py      ← T4.2.x (ECO CRUD)
-│   └── test_project_tools.py  ← T6.x
-│
-├── scripts/
-│   ├── init_book.py           ← chart of accounts initialization (M1.2)
-│   ├── create-book-volume.zsh ← sparsebundle one-time setup (M5.1)
-│   ├── verify-backup.zsh      ← backup verification (M8.3)
-│   ├── analyze-sessions.py    ← hybrid readiness report from metrics.jsonl (M9.4)
-│   └── spike/                 ← Phase 0 throwaway scripts (delete after P0)
-│       ├── spike-a-bindings.sh
-│       ├── spike-b-virtiofs.zsh
-│       ├── spike-c-schema.py
-│       ├── spike-d-readonly.zsh
-│       ├── spike-e-snapshots.zsh
-│       └── spike-f/           ← Spike F: minimal Swift proxy + Python container
-│           ├── Sources/spike-f/main.swift
-│           ├── Package.swift
-│           └── container/server.py
-│
-└── bin/
-    └── gnucash-browse         ← GUI read-only zsh wrapper (M5.3)
-                                  (start/stop handled by gnucash-mcp Swift binary)
+└── worker/                    ← Python container (self-contained build context)
+    ├── Dockerfile             ← multi-stage: base / prod / dev
+    │                             build: container build -t gnucash-mcp:latest worker/
+    ├── pyproject.toml         ← Python package metadata + dev deps (ruff, ty, pytest)
+    │
+    ├── gnucash_mcp/           ← Python package (copied into container by Dockerfile)
+    │   ├── __init__.py
+    │   ├── __main__.py        ← one-shot stdin→stdout dispatcher entry point (M1.5)
+    │   ├── dispatch.py        ← routes JSON-RPC method+name to handler (M1.5)
+    │   ├── session.py         ← GnuCash session manager; get_account; gnc_decimal (M1.4)
+    │   ├── wal.py             ← write-ahead log; append/mark_committed/replay (M1.3)
+    │   ├── instrumentation.py ← timing context manager; dispatch-timing.jsonl (M9.2)
+    │   └── tools/
+    │       ├── __init__.py
+    │       ├── read.py        ← Tier 1 read tools (M1.5)
+    │       ├── write.py       ← Tier 1 write tools (M1.6)
+    │       ├── book.py        ← Tier 2 book_* tools (M2.1)
+    │       ├── vendor.py      ← Tier 2 vendor_* tools (M2.2)
+    │       ├── budget.py      ← Tier 2 budget_* tools (M4.1)
+    │       ├── eco.py         ← Tier 2 eco_* tools (M4.2)
+    │       └── project.py     ← project-specific tools (Phase 6)
+    │
+    ├── scripts/               ← operational scripts (copied into container by Dockerfile)
+    │   ├── init_book.py           ← chart of accounts initialization (M1.2)
+    │   ├── create-book-volume.zsh ← sparsebundle one-time setup (M5.1; runs on macOS host)
+    │   ├── verify-backup.zsh      ← backup verification (M8.3; runs on macOS host)
+    │   └── analyze-sessions.py    ← hybrid readiness report from metrics.jsonl (M9.4)
+    │
+    └── tests/                 ← pytest suite (runs inside container via mise test)
+        ├── conftest.py
+        ├── test_wal.py            ← T1.3.x
+        ├── test_session.py        ← T1.4.x
+        ├── test_read_tools.py     ← T1.5.x
+        ├── test_write_tools.py    ← T1.6.x
+        ├── test_book_tools.py     ← T2.1.x
+        ├── test_vendor_tools.py   ← T2.2.x
+        ├── test_crud_tools.py     ← T3.1.x
+        ├── test_audit_log.py      ← T3.2.x
+        ├── test_budget_tools.py   ← T4.1.x
+        ├── test_eco_tools.py      ← T4.2.x
+        └── test_project_tools.py  ← T6.x
 ```
 
 Inside the sparsebundle (at `/Volumes/GnuCash-Project/` when mounted):
@@ -122,9 +118,9 @@ Inside the sparsebundle (at `/Volumes/GnuCash-Project/` when mounted):
 project.gnucash
 project.gnucash.20250401120000.gnucash   (GnuCash auto-backup)
 project.gnucash.20250401120000.log
-mcp-wal.jsonl                              (write-ahead log)
-mcp.log                                    (tool call narrative log, Phase 8)
-dispatch-timing.jsonl                      (per-phase timing breakdown, Phase 9)
+project.gnucash.pre-20250401-120000.gnucash  (cp -c pre-session backup, M5.4)
+project.wal.jsonl                            (write-ahead log)
+dispatch-timing.jsonl                        (per-call timing, Phase 9)
 ```
 
 In `~/.local/share/gnucash-mcp/` (macOS host, outside sparsebundle):

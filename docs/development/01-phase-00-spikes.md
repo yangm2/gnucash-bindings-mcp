@@ -201,7 +201,7 @@ made during read-only probe.
 
 ---
 
-### Spike D — Read-only mount enforcement (`scripts/spike-d.sh`)
+### Spike D — Read-only mount enforcement (`spikes/scripts/spike-d.sh`)
 
 **Question:** Does macOS GnuCash 5.15, when opened against a `-readonly` hdiutil
 mount, truly fail to write, or does it find a writable path around the mount flag?
@@ -238,7 +238,7 @@ backup files created. GnuCash cannot write through a `-readonly` hdiutil mount.
 
 ---
 
-### Spike E — APFS snapshots on sparsebundle volume (`scripts/spike-e.sh`)
+### Spike E — APFS snapshots on sparsebundle volume (`spikes/scripts/spike-e.sh`)
 
 **Question:** Does `tmutil localsnapshot` work against a mounted sparsebundle
 volume as a named path argument, or only against the boot volume (`/`)?
@@ -294,7 +294,7 @@ cp -c "$BOOK" "${BOOK%.gnucash}.pre-$(date +%Y%m%d-%H%M%S).gnucash"
 
 ---
 
-### Spike F — Swift proxy HTTP transport and CoWork bridge (`spike-f/`) (resolves KU-8, KU-9)
+### Spike F — Swift proxy HTTP transport and CoWork bridge (`spikes/spike-f/`) (resolves KU-8, KU-9)
 
 **Question:** Does a Swift NIO HTTP server running on the macOS host, forwarding
 requests to an Apple Container via `ContainerAPIClient` stdin/stdout, appear as
@@ -311,7 +311,7 @@ connector type accepts it.)
 a JSON-RPC request to its stdin, read the response from stdout, and stop the
 container — reliably, in under 1 second?
 
-The `spike-f/` directory is a complete Swift package: `Package.swift` (swift-nio +
+The `spikes/spike-f/` directory is a complete Swift package: `Package.swift` (swift-nio +
 swift-argument-parser), `Sources/spike-f/main.swift` (NIO HTTP server + container
 dispatch via `container run`), `Dockerfile.echo` (minimal Python echo container),
 and `run.sh` (builds both and starts the server).
@@ -319,7 +319,7 @@ and `run.sh` (builds both and starts the server).
 Build and run: `cd spike-f && ./run.sh`
 
 ```swift
-// spike-f/Sources/spike-f/main.swift — minimal Swift MCP proxy
+// spikes/spike-f/Sources/spike-f/main.swift — minimal Swift MCP proxy
 // Uses NIO for HTTP, container CLI for dispatch
 // Tool: ping() → {"status": "ok", "transport": "swift-proxy"}
 
@@ -439,7 +439,7 @@ cross-version schema compatibility (5.14 container vs macOS 5.15 book file).
 
 ---
 
-### Spike H — PDF extraction from directory mount (`scripts/spike-h.py`) (resolves KU-13)
+### Spike H — PDF extraction from directory mount (`spikes/scripts/spike-h.py`) (resolves KU-13)
 
 **Question:** Can `pdfplumber` (or `pymupdf`) running inside the Ubuntu container
 reliably extract structured invoice and bank statement fields from text-layer PDFs
@@ -519,7 +519,7 @@ container run --rm \
   --volume /data/project.gnucash:/data/project.gnucash \
   --volume ~/Documents/invoices:/invoices:ro \
   gnucash-mcp:latest \
-  python3 /src/scripts/spike-h.py
+  python3 /src/spikes/scripts/spike-h.py
 ```
 
 Confirm: container can read PDFs from `/invoices`, cannot write to it.

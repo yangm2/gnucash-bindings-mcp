@@ -37,7 +37,7 @@ Professional fee vendors (`Architecture — Acme Architecture`) are the exceptio
 their contracts are individually scoped, so their expense accounts can carry their
 own budget amounts if desired, set via `budget_set_amount`.
 
-**Deliverables (`src/tools/budget.py`):**
+**Deliverables (`worker/gnucash_mcp/tools/budget.py`):**
 
 ```python
 @app.tool()
@@ -178,7 +178,7 @@ independently. `get_budget_vs_actual()` can then report separately on:
 - ECO spend vs approved ECO total
 - Combined total vs combined budget
 
-**Deliverables (`src/tools/eco.py`):**
+**Deliverables (`worker/gnucash_mcp/tools/eco.py`):**
 
 ```python
 @app.tool()
