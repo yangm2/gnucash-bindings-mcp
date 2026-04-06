@@ -48,7 +48,8 @@ RUN apt-get update && \
 ENV PATH="/root/.local/bin:${PATH}"
 
 RUN uv tool install ruff && \
-    uv tool install pyright
+    uv tool install pyright && \
+    pip3 install --break-system-packages pytest>=7.0
 
 # ── default ───────────────────────────────────────────────────────────────────
 # `container build worker/` with no --target produces the prod image.

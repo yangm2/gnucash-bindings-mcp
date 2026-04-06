@@ -82,13 +82,16 @@ container run --rm \
 """
 
 [tasks.test]
-description = "Run test suite inside prod container"
+description = "Run test suite in dev container"
+depends = ["build-dev"]
 run = """
 container run --rm \
   -v {{config_root}}/.test-data:/data:rw \
+  -v ${WORKER_DIR}:/src:ro \
   -e GNUCASH_BOOK_PATH=/data/project.gnucash \
-  gnucash-mcp:latest \
-  python3 -m pytest /src/tests/ -v
+  --entrypoint bash \
+  gnucash-mcp:dev \
+  -c "cd /src && python3 -m pytest tests/ -v"
 """
 
 [tasks.clean]
