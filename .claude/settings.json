@@ -7,7 +7,10 @@
       "Bash(gh run:*)",
       "Bash(gh search:*)",
       "Bash(gh issue:*)",
-      "WebFetch(domain:ollama.com)"
+      "WebFetch(domain:ollama.com)",
+      "Bash(mise build:*)",
+      "Bash(mise test:*)",
+      "Bash(grep -n \"MC-6\\\\|chart of account\" /Volumes/Work/prj/gnucash-bindings-mcp/docs/development/*.md)"
     ]
   },
   "enabledPlugins": {

@@ -1,0 +1,59 @@
+[env]
+# Build context root (repo directory)
+BUILD_DIR = "."
+
+[tasks.build]
+description = "Build container image for Phase 1"
+run = """
+container build \
+  -f Docker/Dockerfile \
+  -t gnucash-mcp:latest \
+  ${BUILD_DIR}
+"""
+
+[tasks.shell]
+description = "Drop into container shell with /data mounted"
+run = """
+container run --rm -it \
+  -v ${PWD}/test-data:/data:rw \
+  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
+  gnucash-mcp:latest \
+  /bin/bash
+"""
+
+[tasks.test]
+description = "Run test suite inside container"
+run = """
+container run --rm \
+  -v ${PWD}/test-data:/data:rw \
+  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
+  -e PYTHONPATH=/src \
+  gnucash-mcp:latest \
+  python3 -m pytest tests/ -v
+"""
+
+[tasks.run]
+description = "Run container for single dispatch (stdin → stdout)"
+run = """
+container run --rm \
+  -v ${PWD}/test-data:/data:rw \
+  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
+  -i \
+  gnucash-mcp:latest
+"""
+
+[tasks.init-book]
+description = "Initialize GnuCash book inside container"
+run = """
+container run --rm \
+  -v ${PWD}/test-data:/data:rw \
+  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
+  gnucash-mcp:latest \
+  python3 -m gnucash_mcp.tools.init_book
+"""
+
+[tasks.clean]
+description = "Clean test data and build artifacts"
+run = """
+rm -rf test-data/*.gnucash* test-data/*.LCK test-data/*.WAL
+"""
