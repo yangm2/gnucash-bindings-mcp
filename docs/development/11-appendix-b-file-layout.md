@@ -38,8 +38,8 @@ gnucash-mcp/
 │       ├── MCPHTTPServer.swift ← NIO HTTP server on localhost:8980
 │       ├── MCPHandler.swift   ← routes initialize/tools/resources to catalog or container
 │       ├── ToolCatalog.swift  ← compiled tool schemas, Tier 1 + Tier 2 (MC-8, MC-9)
-│       ├── StaticResources.swift ← book-setup-guide, vendor-guide, expected-chart,
-│       │                           budget-guide, eco-guide (all served without container)
+│       ├── StaticResources.swift ← session-context, book-setup-guide, vendor-guide,
+│       │                           expected-chart, budget-guide, eco-guide (no container)
 │       ├── ContainerPool.swift ← size-1 TTL pool; sleep/wake recovery (KU-11)
 │       ├── ContainerDispatch.swift ← ContainerAPIClient stdin/stdout round-trip
 │       ├── VolumeMount.swift  ← hdiutil attach/detach via Process
@@ -75,6 +75,7 @@ gnucash-mcp/
 │       └── project.py         ← project-specific tools (Phase 6)
 │
 ├── resources/                 ← Source content for Swift StaticResources.swift
+│   ├── session_context.json   ← gnucash://session-context (tool groups, conventions, resource index)
 │   ├── book_setup_guide.md    ← gnucash://book-setup-guide
 │   ├── vendor_guide.md        ← gnucash://vendor-guide
 │   ├── expected_chart.json    ← gnucash://expected-chart (MC-6 account structure)

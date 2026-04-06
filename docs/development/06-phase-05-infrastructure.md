@@ -71,7 +71,6 @@ static let tier2: Set<String> = [
     "budget_create", "budget_list", "budget_get", "budget_set_amount",
     "budget_update", "budget_delete",
     "eco_create", "eco_list", "eco_get", "eco_approve", "eco_void",
-    "__unlock_ledger__",
 ]
 
 // Profile subsets (used by MC-10 profile selection)
@@ -88,7 +87,6 @@ static let setup: Set<String> = [
     "budget_create", "budget_list", "budget_get", "budget_set_amount",
     "budget_update", "budget_delete",
     "eco_create", "eco_list", "eco_get",
-    "__unlock_ledger__",
 ]
 static let construction: Set<String> = tier1
     .union(tier1Crud)

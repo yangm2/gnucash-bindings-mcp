@@ -25,7 +25,7 @@ Before comparing options, establish what a session actually costs in tokens.
 
 | Event | Approx tokens |
 |---|---|
-| `__unlock_ledger__` call + response | ~300 |
+| `gnucash://session-context` read + response | ~300 |
 | Single write tool call + response | ~200–400 |
 | Read tool with full transaction list | ~400–800 |
 
@@ -33,7 +33,7 @@ Before comparing options, establish what a session actually costs in tokens.
 
 ```
 Tool catalog:          ~4,300 tokens (input, once)
-__unlock_ledger__:       ~300 tokens
+gnucash://session-context read: ~300 tokens
 9 × tool calls:        ~3,000 tokens (mixed input/output)
 Total:                 ~7,600 tokens per session
 ```
@@ -41,7 +41,7 @@ Total:                 ~7,600 tokens per session
 ```mermaid
 pie title Typical operational session token breakdown (~7,600 tokens)
     "Tool catalog loaded at start" : 4300
-    "__unlock_ledger__ call + response" : 300
+    "session-context resource read" : 300
     "9 tool calls (input + output)" : 3000
 ```
 
@@ -55,7 +55,7 @@ have zero per-token cost — the only cost is electricity and time.
 **Claude Desktop (`streamable-http`) or Claude API + MCP SDK**
 
 Claude is the reference client this server is designed for. `server_instructions`,
-`__unlock_ledger__`, the three-tier tool architecture, and the profile system are
+`gnucash://session-context`, the three-tier tool architecture, and the profile system are
 all designed around Claude's behaviour.
 
 **Cost at Sonnet 4.x pricing (~$3/MTok input, ~$15/MTok output):**
@@ -99,7 +99,7 @@ flowchart LR
 - Reads `server_instructions` and respects tool tiering
 - Best multi-step accounting reasoning
 - CoWork support via SDK bridge (MC-4)
-- `__unlock_ledger__` reliability highest (still uncertain — KU-10)
+- `gnucash://session-context` read reliability highest (still uncertain — KU-10)
 
 **Weaknesses:**
 - Per-token cost (small but non-zero)
@@ -173,9 +173,9 @@ flowchart LR
 - Start the proxy with `gnucash-mcp start --profile operational` to reduce the
   tool catalog to ~4,300 tokens — gpt-oss handles this fine but fewer tools means
   fewer wrong choices.
-- Explicitly prompt `__unlock_ledger__` at session start; deepagents won't call it
-  automatically. Add it to the system prompt or as a hardcoded first step in the
-  LangGraph graph.
+- Explicitly fetch `gnucash://session-context` at session start; deepagents won't
+  read resources automatically. Add it as a hardcoded first step in the LangGraph
+  graph or inject its content into the system prompt.
 - Disable deepagents' built-in `execute` / `write_file` tools or constrain the
   sandbox so they cannot reach `/Volumes/GnuCash-Project` directly.
 - `Mcp-Session-Id` header forwarding by `langchain-mcp-adapters` is unconfirmed —
@@ -385,7 +385,7 @@ async def run_accounting_task(instruction: str) -> str:
 async def get_project_status() -> str:
     """Return a one-paragraph project financial status summary."""
     return await run_accounting_task(
-        "Call __unlock_ledger__ then get_project_summary and return a "
+        "Read gnucash://session-context then call get_project_summary and return a "
         "concise paragraph summary of the project financial status."
     )
 
@@ -422,7 +422,7 @@ async def reconcile_from_statement(
 
 ACCOUNTING_SYSTEM_PROMPT = """
 You are a GnuCash accounting agent for a construction project ledger.
-Always call __unlock_ledger__ first to load the current book state.
+Always read gnucash://session-context first to load tool groups and conventions.
 Use void_transaction (not delete_transaction) for correcting posted entries.
 Confirm=True is required for delete_transaction and vendor_delete — only pass
 it when the instruction explicitly requests permanent deletion.

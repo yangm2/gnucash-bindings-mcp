@@ -49,7 +49,7 @@ can proceed with confidence. Each has a designated spike in Phase 0.
 | KU-7 | Does `open --wait-apps` in the zsh wrapper reliably block until the GnuCash process fully exits, including cleanup? | Premature detach of sparsebundle while GnuCash still holds file handles | Phase 5, GUI wrapper test |
 | KU-8 | Does Claude Desktop's `streamable-http` connector accept a plain HTTP (non-TLS) connection to `localhost:8980` from a natively-running Swift proxy? | Must use HTTPS or an alternate registration mechanism | Phase 0, Spike F |
 | KU-9 | Does Claude Desktop's `streamable-http` MCP connector correctly bridge to CoWork's VM via the SDK passthrough layer? | CoWork cannot use GnuCash tools despite Claude Desktop connecting successfully | Phase 0, Spike F |
-| KU-10 | Does `__unlock_ledger__` tool reliably cause Claude to treat it as a mandatory initialization step, or does it get skipped? | Context about tool groups and conventions not loaded; Claude makes incorrect tool choices | Phase 1, integration test |
+| KU-10 | Does Claude reliably read `gnucash://session-context` at session start via the `server_instructions` reference, or does it skip it? | Tool conventions and resource index not loaded; Claude makes suboptimal tool choices without the context | Phase 1, integration test |
 | KU-11 | After Mac sleep/wake, does the pooled container handle held by the Swift proxy become stale (VM suspended/killed)? How does `ContainerAPIClient` signal this? | Proxy forwards request to a dead container; tool call hangs or returns garbage | Phase 5, Swift proxy integration |
 | KU-12 | Ubuntu 26.04 LTS (releasing end of April 2026) — does `ppa:gnucash/ppa` publish arm64 packages for 26.04 in time to use it as the container base? What version of GnuCash ships in universe if the PPA is not yet available? | Must stay on 24.04 or ship a stale GnuCash version; Spike C re-validation required if base changes | Phase 0, Spike G |
 | KU-13 | Can `pdfplumber` (or `pymupdf`) reliably extract structured fields (vendor, invoice number, line items, totals) from text-layer PDFs as produced by typical architecture/engineering firms and the project bank? If PDFs are scanned, OCR adds a dependency (tesseract) and quality risk. | PDF invoice and statement workflows require Claude vision input (high token cost) or manual data entry; path-based container mount approach fails for scanned docs | Phase 0, Spike H |
@@ -268,13 +268,12 @@ vendor_add, vendor_list, vendor_get_details, vendor_rename,
 vendor_update, vendor_delete,
 budget_create, budget_list, budget_get, budget_set_amount,
 budget_update, budget_delete,
-eco_create, eco_list, eco_get, eco_approve, eco_void,
-__unlock_ledger__
+eco_create, eco_list, eco_get, eco_approve, eco_void
 ```
 
 **MCP Resources** (zero startup cost, fetched on demand):
 ```
-gnucash://resources               — index of all resources and when to use them
+gnucash://session-context         — tool groups, conventions, and resource index (read at session start)
 gnucash://book-setup-guide        — account_type values, naming conventions
 gnucash://vendor-guide            — expense_category options for vendor_add
 gnucash://expected-chart          — full expected account tree (used by book_verify_structure)
@@ -283,19 +282,22 @@ gnucash://eco-guide               — ECO numbering, direction conventions, appr
 gnucash://vendors                 — live vendor list with AP balances (requires container)
 ```
 
-**`__unlock_ledger__` tool** — called at session start to return operational context
-(current balances, open AP count, and a reference to `gnucash://resources`).
-Semantically named to encourage Claude to treat it as a mandatory initialization
-step rather than optional discovery. Returns a compact JSON payload; does not itself
-consume resources or open a GnuCash session.
+**`gnucash://session-context` resource** — static MCP resource served by the Swift
+proxy (no container required). Returns tool groups, naming conventions, and the
+resource index. Referenced in `server_instructions` so Claude reads it at session
+start. Entirely static — the proxy injects `GNUCASH_BOOK_PATH` as an environment
+variable when spawning the container; the book path is never passed through the MCP
+protocol and never appears in Claude's context.
 
 **`server_instructions`** — returned in the Swift proxy's `initialize` response,
-describing tool groups and the resource index. Acknowledged that Claude Desktop
-sometimes ignores this field; `__unlock_ledger__` is the reliable backup mechanism.
+directing Claude to read `gnucash://session-context` before calling any tool.
+KU-10 tracks whether Claude reliably acts on this. If not, the compound tool
+analysis in Phase 9 M9.4 will surface `gnucash://session-context` reads as
+the dominant session-start pattern, confirming or refuting compliance.
 
 **Token accounting (steady-state, `full` profile):**
 - Tier 1 + Tier 2 tool schemas at startup: ~8,000 tokens (~36 tools)
-- `__unlock_ledger__` call + response: ~300 tokens
+- `gnucash://session-context` read + response: ~300 tokens
 - Total before first real question: ~8,300 tokens
 - On-demand resource fetch (e.g. `gnucash://vendor-guide`): ~200–400 tokens if needed
 
@@ -341,8 +343,8 @@ the Swift layer receives protocol requests and dispatches containers via
 **Swift proxy owns:**
 - MCP HTTP server on `localhost:8980` (NIO-based, persistent, ~5MB)
 - `initialize` / `tools/list` / `resources/list` responses (static, compiled)
-- Static resource content (`gnucash://book-setup-guide`, `gnucash://vendor-guide`,
-  `gnucash://expected-chart`)
+- Static resource content (`gnucash://session-context`, `gnucash://book-setup-guide`,
+  `gnucash://vendor-guide`, `gnucash://expected-chart`)
 - `server_instructions` field content
 - Sparsebundle mount lifecycle (`hdiutil` via `Process`)
 - Container pool management (size 1, 5s TTL)
@@ -472,7 +474,7 @@ gnucash-mcp snapshot  — trigger manual APFS snapshot without starting a sessio
 
 *Phase 3 proxy (deferred until Claude Desktop supports `tools/listChanged`):*
 - Builder-pattern progressive disclosure:
-  - On first connection: advertise only setup tools (`book_*`, `__unlock_ledger__`)
+  - On first connection: advertise only setup tools (`book_*`)
   - After `book_verify_structure` returns `ok: true`: emit `tools/listChanged`,
     update catalog to full operational set
   - Saves ~3,200 tokens per setup session by deferring Tier 1 schemas
@@ -512,7 +514,7 @@ source of truth in Swift while making it runtime-selectable.
 | `full` (default) | All 36 tools | ~8,300 | General use, agentic CoWork tasks |
 | `operational` | Tier 1 only (16 tools) | ~4,300 | Daily ledger work; no setup needed |
 | `readonly` | Read-only tools only (6 tools) | ~1,500 | Querying balances and reports |
-| `setup` | `book_*` + `vendor_*` + `budget_*` + `eco_*` + `__unlock_ledger__` | ~2,800 | Pre-construction: enter GC budget, set up accounts |
+| `setup` | `book_*` + `vendor_*` + `budget_*` + `eco_*` | ~2,800 | Pre-construction: enter GC budget, set up accounts |
 | `construction` | Tier 1 + `eco_*` | ~5,500 | Active construction; track COs daily |
 | `reconcile` | Reconciliation + reporting tools | ~2,000 | Month-end bank reconciliation |
 

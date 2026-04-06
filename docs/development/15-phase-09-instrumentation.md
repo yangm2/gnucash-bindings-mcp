@@ -61,7 +61,7 @@ struct SessionSummary: Codable {
 ```
 $ gnucash-mcp metrics
 Tool                      calls   p50ms  p95ms   cold%  avg_resp_kb
-__unlock_ledger__            18       8     22      11%         1.2
+gnucash://session-context            18       8     22      11%         1.2
 get_project_summary          41      38     91       7%         2.8
 list_transactions            33      72    160       9%         8.4
 receive_invoice              15     340    820      27%         0.9
@@ -191,7 +191,7 @@ proxy) or reconstructed from `metrics.jsonl` by the analysis script (Phase 1 pro
   "end": "2025-06-15T10:34:18Z",
   "duration_s": 138,
   "tool_sequence": [
-    "__unlock_ledger__",
+    "gnucash://session-context",
     "get_project_summary",
     "list_transactions",
     "receive_invoice",
@@ -312,10 +312,10 @@ Pair                                   freq   avg B resp   merge score   action
 receive_invoice → get_ap_aging           11      4.1 KB     11,275 tok   fold ap_aging into response
 list_transactions → get_transaction       8      1.2 KB      2,400 tok   add detail flag to list_transactions
 get_project_summary → get_ap_aging        6      4.1 KB      6,150 tok   fold into project_summary
-__unlock_ledger__ → get_project_summary  23      2.8 KB     16,100 tok   merge into single session-start tool
+gnucash://session-context → get_project_summary  23      2.8 KB     16,100 tok   merge into single session-start tool
 
 Triples (A→B→C occurring ≥3 times):
-__unlock_ledger__ → get_project_summary → list_transactions  (14×, 26 KB combined)
+gnucash://session-context → get_project_summary → list_transactions  (14×, 26 KB combined)
   → candidate for a single session_open tool returning summary + recent transactions
 ```
 
@@ -352,7 +352,7 @@ T9.4.9  merge_score = frequency × avg_b_bytes / 4 (verify against manual calcul
         for the top-ranked pair)
 T9.4.10 Pair with avg_b_bytes < 200 does not appear in candidates table
         (below minimum response-size threshold — not worth merging)
-T9.4.11 Session-start triple (__unlock_ledger__ → get_project_summary → ...) detected
+T9.4.11 Session-start triple (gnucash://session-context → get_project_summary → ...) detected
         when injected into synthetic session data at ≥3 frequency
 ```
 

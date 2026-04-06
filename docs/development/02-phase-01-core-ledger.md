@@ -255,7 +255,6 @@ HANDLERS = {
     "get_transaction":      read.get_transaction,
     "get_project_summary":  read.get_project_summary,
     "get_audit_log":        read.get_audit_log,     # reads WAL, no GnuCash session
-    "__unlock_ledger__":    read.unlock_ledger,
     "gnucash://vendors":    read.vendors_resource,  # dynamic resource
     # Tier 1 — write (core) added in M1.6
     # Tier 1 — write (correction) added in Phase 3
@@ -289,70 +288,66 @@ def dispatch(request: dict) -> dict:
     return error_response(req_id, -32601, f"Unsupported method in container: {method}")
 ```
 
-**`__unlock_ledger__` tool** — implemented in Python, called by proxy dispatch:
-```python
-def unlock_ledger() -> dict:
-    """CALL FIRST. Returns current book state and tool navigation guide."""
-    return {
-        "book": str(BOOK_PATH),
-        "tool_groups": {
-            "operational": [
-                "receive_invoice", "pay_invoice", "fund_project",
-                "post_interest", "post_transaction",
-                "get_account_balance", "list_accounts",
-                "list_transactions", "get_transaction",
-                "get_project_summary", "get_budget_vs_actual",
-                "get_ap_aging", "get_audit_log",
-            ],
-            "correction": [
-                "update_transaction", "void_transaction", "delete_transaction",
-            ],
-            "book_setup": [
-                "book_add_account", "book_get_account_tree",
-                "book_verify_structure", "book_set_opening_balance",
-                "book_rename_account", "book_move_account", "book_delete_account",
-            ],
-            "vendors": [
-                "vendor_add", "vendor_list", "vendor_get_details",
-                "vendor_rename", "vendor_update", "vendor_delete",
-            ],
-            "budget": [
-                "budget_create", "budget_list", "budget_get",
-                "budget_set_amount", "budget_update", "budget_delete",
-            ],
-            "ecos": [
-                "eco_create", "eco_list", "eco_get",
-                "eco_approve", "eco_void",
-            ],
-        },
-        "resource_index": {
-            "gnucash://book-setup-guide":
-                "Read before calling any book_* tool",
-            "gnucash://vendor-guide":
-                "Read before calling vendor_add or vendor_update",
-            "gnucash://expected-chart":
-                "Full account tree — used by book_verify_structure",
-            "gnucash://budget-guide":
-                "Read before calling budget_create or budget_set_amount",
-            "gnucash://eco-guide":
-                "Read before calling eco_create or eco_approve",
-            "gnucash://vendors":
-                "Live vendor list with current AP balances (requires container)",
-        },
-        "conventions": {
-            "account_path_separator": ":",
-            "amount": "decimal string, no currency symbol e.g. '25000.00'",
-            "date": "ISO-8601 YYYY-MM-DD",
-        }
-    }
+**`gnucash://session-context` resource** — served by the Swift proxy from a compiled-in
+Swift string constant. No container required. Content:
+
+```json
+{
+  "tool_groups": {
+    "operational": [
+      "receive_invoice", "pay_invoice", "fund_project",
+      "post_interest", "post_transaction",
+      "get_account_balance", "list_accounts",
+      "list_transactions", "get_transaction",
+      "get_project_summary", "get_budget_vs_actual",
+      "get_ap_aging", "get_audit_log"
+    ],
+    "correction": [
+      "update_transaction", "void_transaction", "delete_transaction"
+    ],
+    "book_setup": [
+      "book_add_account", "book_get_account_tree",
+      "book_verify_structure", "book_set_opening_balance",
+      "book_rename_account", "book_move_account", "book_delete_account"
+    ],
+    "vendors": [
+      "vendor_add", "vendor_list", "vendor_get_details",
+      "vendor_rename", "vendor_update", "vendor_delete"
+    ],
+    "budget": [
+      "budget_create", "budget_list", "budget_get",
+      "budget_set_amount", "budget_update", "budget_delete"
+    ],
+    "ecos": [
+      "eco_create", "eco_list", "eco_get", "eco_approve", "eco_void"
+    ]
+  },
+  "resource_index": {
+    "gnucash://book-setup-guide":  "Read before calling any book_* tool",
+    "gnucash://vendor-guide":      "Read before calling vendor_add or vendor_update",
+    "gnucash://expected-chart":    "Full account tree — used by book_verify_structure",
+    "gnucash://budget-guide":      "Read before calling budget_create or budget_set_amount",
+    "gnucash://eco-guide":         "Read before calling eco_create or eco_approve",
+    "gnucash://vendors":           "Live vendor list with current AP balances (requires container)"
+  },
+  "conventions": {
+    "account_path_separator": ":",
+    "amount": "decimal string, no currency symbol e.g. '25000.00'",
+    "date": "ISO-8601 YYYY-MM-DD"
+  }
+}
 ```
+
+The book path (`GNUCASH_BOOK_PATH`) is injected by the Swift proxy as an environment
+variable when spawning the container — it is never passed through the MCP protocol
+and never appears in Claude's context.
 
 **Note on resources:** Static resources are served directly by the Swift proxy from
 compiled-in Swift string constants — the Python container is never invoked for them.
 Only `gnucash://vendors` requires the container (live AP balance query).
 
-Static resources served by proxy:
-- `gnucash://resources` — index of all resources
+Static resources served by proxy (no container):
+- `gnucash://session-context` — tool groups, conventions, resource index (read at session start)
 - `gnucash://book-setup-guide` — account_type values and naming conventions
 - `gnucash://vendor-guide` — expense_category options and vendor workflow
 - `gnucash://expected-chart` — full expected account structure
@@ -372,7 +367,8 @@ Dynamic resources (require container):
 ```
 T1.5.1  Container starts, receives JSON-RPC tools/call via stdin, returns response
         on stdout, exits — round trip under 500ms
-T1.5.2  __unlock_ledger__ returns all three tool group keys without error
+T1.5.2  gnucash://session-context read via proxy returns all tool_groups keys without
+        container (verify via ContainerAPIClient call count = 0)
 T1.5.3  gnucash://vendors dispatch opens read-only GnuCash session and returns list
 T1.5.4  get_account_balance returns correct balance after a known funding entry
 T1.5.5  list_accounts(None) returns all top-level account names
@@ -383,7 +379,7 @@ T1.5.8  All read tools open and close a GnuCash session within the single dispat
 T1.5.9  Unknown tool name returns JSON-RPC error -32601, not a Python exception
 T1.5.10 Via Swift proxy: Claude Desktop shows gnucash-myproject connected (manual,
         requires M5.2 complete; record in TEST_RESULTS.md)
-T1.5.11 Via Swift proxy: Claude calls __unlock_ledger__ at session start (manual;
+T1.5.11 Via Swift proxy: Claude reads gnucash://session-context at session start (manual;
         resolves KU-10; record in TEST_RESULTS.md)
 T1.5.12 Via Swift proxy: CoWork can call get_project_summary() (manual;
         resolves KU-9; record in TEST_RESULTS.md)
@@ -441,7 +437,7 @@ T1.6.10 Post all known invoices from project documents:
 - macOS GnuCash opened against the file (read-only mount), account tree and
   all transactions visible and correct (manual verification)
 - No data loss after simulated crash + replay (T1.6.8 confirmed)
-- KU-10 resolved: `__unlock_ledger__` behavior documented in TEST_RESULTS.md
+- KU-10 resolved: `gnucash://session-context` read behavior documented in TEST_RESULTS.md
 
 ---
 
