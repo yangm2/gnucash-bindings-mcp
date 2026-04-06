@@ -40,7 +40,15 @@ COPY scripts/ /src/scripts/
 # Adds uv, ruff, and ty for local development and linting.
 FROM base AS dev
 
-RUN pip3 install --break-system-packages uv ruff ty
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && \
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+
+ENV PATH="/root/.local/bin:${PATH}"
+
+RUN uv tool install ruff && \
+    uv tool install ty
 
 # ── default ───────────────────────────────────────────────────────────────────
 # `container build` with no --target produces the prod image.
