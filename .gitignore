@@ -1,3 +1,22 @@
-.mypy_cache
+# macOS
 .DS_Store
-**/.build
+
+# Python
+.mypy_cache/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Swift / Xcode
+**/.build/
+
+# GnuCash ephemeral files
+*.LCK
+*.LNK
+*.log
+
+# Test data (ephemeral, never committed)
+.test-data/
+
+# Legacy location (was committed by mistake)
+test-data/

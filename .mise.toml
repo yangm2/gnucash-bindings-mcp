@@ -1,99 +1,80 @@
 [env]
-BUILD_DIR = "."
+WORKER_DIR = "{{config_root}}/worker"
 
-# ── build targets ─────────────────────────────────────────────────────────────
+# ── build ─────────────────────────────────────────────────────────────────────
 
 [tasks.build]
-description = "Build prod image (gnucash-mcp:latest) — base + scripts"
-run = """
-container build \
-  -f Docker/Dockerfile \
-  --target prod \
-  -t gnucash-mcp:latest \
-  ${BUILD_DIR}
-"""
+description = "Build prod image (gnucash-mcp:latest)"
+run = "container build -t gnucash-mcp:latest ${WORKER_DIR}"
 
 [tasks.build-dev]
-description = "Build dev image (gnucash-mcp:dev) — base + uv/ruff/ty"
-run = """
-container build \
-  -f Docker/Dockerfile \
-  --target dev \
-  -t gnucash-mcp:dev \
-  ${BUILD_DIR}
-"""
+description = "Build dev image (gnucash-mcp:dev) — includes uv/ruff/ty"
+run = "container build --target dev -t gnucash-mcp:dev ${WORKER_DIR}"
 
 [tasks.build-base]
-description = "Build base image (gnucash-mcp:base) — GnuCash + Python package only"
-run = """
-container build \
-  -f Docker/Dockerfile \
-  --target base \
-  -t gnucash-mcp:base \
-  ${BUILD_DIR}
-"""
+description = "Build base image (gnucash-mcp:base)"
+run = "container build --target base -t gnucash-mcp:base ${WORKER_DIR}"
 
 # ── dev tools ─────────────────────────────────────────────────────────────────
 
 [tasks.lint]
-description = "Run ruff lint + ty type-check in dev container"
+description = "ruff check + ty check in dev container (source volume-mounted)"
 run = """
 container run --rm \
-  -v ${PWD}/gnucash_mcp:/src/gnucash_mcp:ro \
-  -v ${PWD}/scripts:/src/scripts:ro \
+  -v ${WORKER_DIR}/gnucash_mcp:/src/gnucash_mcp:ro \
+  -v ${WORKER_DIR}/scripts:/src/scripts:ro \
   gnucash-mcp:dev \
-  /bin/bash -c "cd /src && ruff check gnucash_mcp scripts && ty check gnucash_mcp"
+  bash -c "cd /src && ruff check gnucash_mcp scripts && ty check gnucash_mcp"
 """
 
 [tasks.fmt]
-description = "Run ruff format in dev container"
+description = "ruff format in dev container (source volume-mounted)"
 run = """
 container run --rm \
-  -v ${PWD}/gnucash_mcp:/src/gnucash_mcp:rw \
-  -v ${PWD}/scripts:/src/scripts:rw \
+  -v ${WORKER_DIR}/gnucash_mcp:/src/gnucash_mcp:rw \
+  -v ${WORKER_DIR}/scripts:/src/scripts:rw \
   gnucash-mcp:dev \
-  /bin/bash -c "cd /src && ruff format gnucash_mcp scripts"
+  bash -c "cd /src && ruff format gnucash_mcp scripts"
 """
 
 # ── runtime ───────────────────────────────────────────────────────────────────
 
 [tasks.run]
-description = "One-shot dispatch: pipe JSON-RPC on stdin → stdout (prod image)"
+description = "One-shot dispatch: pipe JSON-RPC on stdin → stdout"
 run = """
-container run --rm \
-  -v ${PWD}/test-data:/data:rw \
+container run --rm -i \
+  -v {{config_root}}/.test-data:/data:rw \
   -e GNUCASH_BOOK_PATH=/data/project.gnucash \
-  -i \
   gnucash-mcp:latest
 """
 
 [tasks.shell]
-description = "Interactive shell in prod container with /data mounted"
+description = "Interactive shell in prod container"
 run = """
 container run --rm -it \
-  -v ${PWD}/test-data:/data:rw \
+  -v {{config_root}}/.test-data:/data:rw \
   -e GNUCASH_BOOK_PATH=/data/project.gnucash \
   --entrypoint /bin/bash \
   gnucash-mcp:latest
 """
 
 [tasks.shell-dev]
-description = "Interactive shell in dev container with source mounted"
+description = "Interactive shell in dev container with source mounted rw"
 run = """
 container run --rm -it \
-  -v ${PWD}/test-data:/data:rw \
-  -v ${PWD}/gnucash_mcp:/src/gnucash_mcp:rw \
-  -v ${PWD}/scripts:/src/scripts:rw \
+  -v {{config_root}}/.test-data:/data:rw \
+  -v ${WORKER_DIR}/gnucash_mcp:/src/gnucash_mcp:rw \
+  -v ${WORKER_DIR}/scripts:/src/scripts:rw \
   -e GNUCASH_BOOK_PATH=/data/project.gnucash \
   --entrypoint /bin/bash \
   gnucash-mcp:dev
 """
 
 [tasks.init-book]
-description = "Initialize GnuCash book using prod image"
+description = "Initialize GnuCash book in .test-data/"
 run = """
 container run --rm \
-  -v ${PWD}/test-data:/data:rw \
+  -v {{config_root}}/.test-data:/data:rw \
   -e GNUCASH_BOOK_PATH=/data/project.gnucash \
   --entrypoint python3 \
   gnucash-mcp:latest \
@@ -104,12 +85,12 @@ container run --rm \
 description = "Run test suite inside prod container"
 run = """
 container run --rm \
-  -v ${PWD}/test-data:/data:rw \
+  -v {{config_root}}/.test-data:/data:rw \
   -e GNUCASH_BOOK_PATH=/data/project.gnucash \
   gnucash-mcp:latest \
   python3 -m pytest /src/tests/ -v
 """
 
 [tasks.clean]
-description = "Remove test data files"
-run = "rm -f test-data/*.gnucash* test-data/*.LCK test-data/*.jsonl"
+description = "Remove ephemeral test data"
+run = "rm -f {{config_root}}/.test-data/*.gnucash* {{config_root}}/.test-data/*.jsonl"

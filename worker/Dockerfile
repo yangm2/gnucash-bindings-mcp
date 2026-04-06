@@ -1,11 +1,11 @@
-# Docker/Dockerfile — multi-stage build
-# Build from repo root:
+# worker/Dockerfile — multi-stage build
+# Build context: worker/  (self-contained)
 #
 #   prod (default):
-#     container build -f Docker/Dockerfile -t gnucash-mcp:latest .
+#     container build -t gnucash-mcp:latest worker/
 #
 #   dev:
-#     container build -f Docker/Dockerfile --target dev -t gnucash-mcp:dev .
+#     container build --target dev -t gnucash-mcp:dev worker/
 #
 # Ubuntu 26.04 with GnuCash 5.14 from universe (no PPA required)
 
@@ -51,5 +51,5 @@ RUN uv tool install ruff && \
     uv tool install ty
 
 # ── default ───────────────────────────────────────────────────────────────────
-# `container build` with no --target produces the prod image.
+# `container build worker/` with no --target produces the prod image.
 FROM prod
