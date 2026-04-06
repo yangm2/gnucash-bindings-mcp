@@ -17,10 +17,25 @@ and a number of periods. Budget amounts are per-account per-period values.
 
 For a construction project the recommended structure is:
 - **One period** covering the full construction contract duration
-- Budget amounts set on each `Expenses:Construction:*` account matching the GC's
-  line items
+- Budget amounts set on each `Expenses:Construction:*` **trade account** matching
+  the GC's line items — not on per-vendor sub-accounts
 - A second budget period (or separate budget) can be added for the draw schedule
   once the GC provides one
+
+**Budget targets are trade accounts, not vendors.** `Construction:Electrical` gets
+a budget amount of `$45,000`; individual electrical vendors (`AP — Pacific Crest
+Electrical`) do not have budget amounts. This means:
+- Vendor replacement mid-trade requires no budget change — the new vendor's invoices
+  continue accumulating against the same trade budget
+- Multiple vendors billing to the same trade account all count against the same
+  budgeted amount, giving a correct total-trade variance regardless of which vendor
+  performed the work
+- `get_budget_vs_actual` on a trade account correctly reflects cumulative spend from
+  all vendors who ever billed to that trade
+
+Professional fee vendors (`Architecture — Acme Architecture`) are the exception —
+their contracts are individually scoped, so their expense accounts can carry their
+own budget amounts if desired, set via `budget_set_amount`.
 
 **Deliverables (`src/tools/budget.py`):**
 
@@ -131,7 +146,10 @@ T4.1.9  budget_update renames budget; amounts unchanged
 T4.1.10 budget_delete without confirm=True raises RequiresConfirmationError
 T4.1.11 budget_delete with confirm=True removes budget; transactions unaffected
 T4.1.12 Full workflow: create budget → set 5 line items → receive 2 invoices →
-         budget_get shows correct committed/paid/variance for each line
+        budget_get shows correct committed/paid/variance for each line
+T4.1.13 Vendor replacement: add trade vendor A → invoice $10K to Construction:Electrical →
+        add trade vendor B (same trade) → invoice $8K to Construction:Electrical →
+        budget_get shows committed=$18K against trade budget; no budget change required
 ```
 
 ---
