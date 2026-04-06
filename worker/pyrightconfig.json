@@ -1,0 +1,32 @@
+{
+  "typeCheckingMode": "standard",
+  "pythonVersion": "3.14",
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false,
+  "reportGeneralTypeIssues": true,
+  "reportOptionalMemberAccess": true,
+  "reportOptionalSubscript": true,
+  "reportConstantRedefinition": true,
+  "reportInvalidTypeForm": true,
+  "reportIncompatibleMethodOverride": true,
+  "reportIncompatibleVariableOverride": true,
+  "reportInconsistentConstructor": true,
+  "reportPrivateImportUsage": true,
+  "reportUnusedImport": true,
+  "reportUnusedClass": true,
+  "reportUnusedFunction": true,
+  "reportUnusedVariable": true,
+  "reportDuplicateImport": true,
+  "reportUnusedCallResult": false,
+  "reportUnnecessaryIsInstance": true,
+  "reportUnnecessaryCast": true,
+  "reportUnnecessaryComparison": true,
+  "reportAssertAlwaysTrue": true,
+  "reportSelfClsParameterName": true,
+  "reportInvalidStringEscapeSequence": true,
+  "ignore": [
+    "**/gnucash_mcp/session.py",
+    "**/gnucash_mcp/tools/*.py",
+    "**/gnucash_mcp/dispatch.py"
+  ]
+}

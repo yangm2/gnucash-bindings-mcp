@@ -48,7 +48,7 @@ RUN apt-get update && \
 ENV PATH="/root/.local/bin:${PATH}"
 
 RUN uv tool install ruff && \
-    uv tool install ty
+    uv tool install pyright
 
 # ── default ───────────────────────────────────────────────────────────────────
 # `container build worker/` with no --target produces the prod image.
