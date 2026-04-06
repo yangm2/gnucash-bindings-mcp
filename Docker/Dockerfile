@@ -1,8 +1,17 @@
-# Docker/Dockerfile — Phase 1 main container
-# Build from repo root: container build -f Docker/Dockerfile -t gnucash-mcp:latest .
+# Docker/Dockerfile — multi-stage build
+# Build from repo root:
+#
+#   prod (default):
+#     container build -f Docker/Dockerfile -t gnucash-mcp:latest .
+#
+#   dev:
+#     container build -f Docker/Dockerfile --target dev -t gnucash-mcp:dev .
+#
 # Ubuntu 26.04 with GnuCash 5.14 from universe (no PPA required)
 
-FROM ubuntu:26.04
+# ── base ─────────────────────────────────────────────────────────────────────
+# GnuCash + Python bindings + gnucash_mcp package. No scripts, no dev tools.
+FROM ubuntu:26.04 AS base
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -12,13 +21,27 @@ RUN apt-get update && \
       python3-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# Python project installed into container image
 COPY pyproject.toml /src/pyproject.toml
 COPY gnucash_mcp/ /src/gnucash_mcp/
-COPY scripts/ /src/scripts/
 RUN pip3 install --break-system-packages -e /src
 
 WORKDIR /data
 ENV GNUCASH_BOOK_PATH=/data/project.gnucash
 
 ENTRYPOINT ["python3", "-m", "gnucash_mcp"]
+
+# ── prod ─────────────────────────────────────────────────────────────────────
+# Adds scripts (init_book.py etc.) to the base image.
+FROM base AS prod
+
+COPY scripts/ /src/scripts/
+
+# ── dev ──────────────────────────────────────────────────────────────────────
+# Adds uv, ruff, and ty for local development and linting.
+FROM base AS dev
+
+RUN pip3 install --break-system-packages uv ruff ty
+
+# ── default ───────────────────────────────────────────────────────────────────
+# `container build` with no --target produces the prod image.
+FROM prod

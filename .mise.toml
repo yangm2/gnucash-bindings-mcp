@@ -1,39 +1,64 @@
 [env]
-# Build context root (repo directory)
 BUILD_DIR = "."
 
+# ── build targets ─────────────────────────────────────────────────────────────
+
 [tasks.build]
-description = "Build container image for Phase 1"
+description = "Build prod image (gnucash-mcp:latest) — base + scripts"
 run = """
 container build \
   -f Docker/Dockerfile \
+  --target prod \
   -t gnucash-mcp:latest \
   ${BUILD_DIR}
 """
 
-[tasks.shell]
-description = "Drop into container shell with /data mounted"
+[tasks.build-dev]
+description = "Build dev image (gnucash-mcp:dev) — base + uv/ruff/ty"
 run = """
-container run --rm -it \
-  -v ${PWD}/test-data:/data:rw \
-  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
-  gnucash-mcp:latest \
-  /bin/bash
+container build \
+  -f Docker/Dockerfile \
+  --target dev \
+  -t gnucash-mcp:dev \
+  ${BUILD_DIR}
 """
 
-[tasks.test]
-description = "Run test suite inside container"
+[tasks.build-base]
+description = "Build base image (gnucash-mcp:base) — GnuCash + Python package only"
+run = """
+container build \
+  -f Docker/Dockerfile \
+  --target base \
+  -t gnucash-mcp:base \
+  ${BUILD_DIR}
+"""
+
+# ── dev tools ─────────────────────────────────────────────────────────────────
+
+[tasks.lint]
+description = "Run ruff lint + ty type-check in dev container"
 run = """
 container run --rm \
-  -v ${PWD}/test-data:/data:rw \
-  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
-  -e PYTHONPATH=/src \
-  gnucash-mcp:latest \
-  python3 -m pytest tests/ -v
+  -v ${PWD}/gnucash_mcp:/src/gnucash_mcp:ro \
+  -v ${PWD}/scripts:/src/scripts:ro \
+  gnucash-mcp:dev \
+  /bin/bash -c "cd /src && ruff check gnucash_mcp scripts && ty check gnucash_mcp"
 """
 
+[tasks.fmt]
+description = "Run ruff format in dev container"
+run = """
+container run --rm \
+  -v ${PWD}/gnucash_mcp:/src/gnucash_mcp:rw \
+  -v ${PWD}/scripts:/src/scripts:rw \
+  gnucash-mcp:dev \
+  /bin/bash -c "cd /src && ruff format gnucash_mcp scripts"
+"""
+
+# ── runtime ───────────────────────────────────────────────────────────────────
+
 [tasks.run]
-description = "Run container for single dispatch (stdin → stdout)"
+description = "One-shot dispatch: pipe JSON-RPC on stdin → stdout (prod image)"
 run = """
 container run --rm \
   -v ${PWD}/test-data:/data:rw \
@@ -42,18 +67,49 @@ container run --rm \
   gnucash-mcp:latest
 """
 
+[tasks.shell]
+description = "Interactive shell in prod container with /data mounted"
+run = """
+container run --rm -it \
+  -v ${PWD}/test-data:/data:rw \
+  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
+  --entrypoint /bin/bash \
+  gnucash-mcp:latest
+"""
+
+[tasks.shell-dev]
+description = "Interactive shell in dev container with source mounted"
+run = """
+container run --rm -it \
+  -v ${PWD}/test-data:/data:rw \
+  -v ${PWD}/gnucash_mcp:/src/gnucash_mcp:rw \
+  -v ${PWD}/scripts:/src/scripts:rw \
+  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
+  --entrypoint /bin/bash \
+  gnucash-mcp:dev
+"""
+
 [tasks.init-book]
-description = "Initialize GnuCash book inside container"
+description = "Initialize GnuCash book using prod image"
+run = """
+container run --rm \
+  -v ${PWD}/test-data:/data:rw \
+  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
+  --entrypoint python3 \
+  gnucash-mcp:latest \
+  /src/scripts/init_book.py
+"""
+
+[tasks.test]
+description = "Run test suite inside prod container"
 run = """
 container run --rm \
   -v ${PWD}/test-data:/data:rw \
   -e GNUCASH_BOOK_PATH=/data/project.gnucash \
   gnucash-mcp:latest \
-  python3 -m gnucash_mcp.tools.init_book
+  python3 -m pytest /src/tests/ -v
 """
 
 [tasks.clean]
-description = "Clean test data and build artifacts"
-run = """
-rm -rf test-data/*.gnucash* test-data/*.LCK test-data/*.WAL
-"""
+description = "Remove test data files"
+run = "rm -f test-data/*.gnucash* test-data/*.LCK test-data/*.jsonl"
