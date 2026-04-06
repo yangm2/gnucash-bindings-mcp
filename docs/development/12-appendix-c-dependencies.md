@@ -19,17 +19,14 @@ This matches the requirement in `buck2-macos-local-reapi`.
 
 | Component | Version | Source |
 |---|---|---|
-| Ubuntu base | 24.04 LTS (Noble) | Docker Hub `ubuntu:24.04` |
-| GnuCash | 5.14 (`1:5.14-0build1`) | `ppa:gnucash/ppa` → `apt-get install python3-gnucash=1:5.14-0build1` |
-| Python | 3.12 (Ubuntu default) | System |
+| Ubuntu base | 26.04 LTS | Docker Hub `ubuntu:26.04` |
+| GnuCash | 5.14 | Ubuntu 26.04 universe → `apt-get install python3-gnucash` |
+| Python | 3.14.3 | Ubuntu 26.04 system default |
 | mcp SDK | latest stable at build time | PyPI via uv |
 
-**GnuCash version note:** The PPA currently provides `1:5.14-0build1` for Noble
-arm64. Pin this version for reproducible container builds:
-```dockerfile
-RUN apt-get install -y python3-gnucash=1:5.14-0build1
-```
-Update the pin when the PPA publishes a new version and Spike C has been re-run.
+**GnuCash version note:** Ubuntu 26.04 universe ships GnuCash 5.14 directly — no
+PPA required. Spike C confirmed 5.14 opens files saved by macOS GnuCash 5.15
+without migration prompt.
 
 **Python dependency note:** The Python container does not depend on FastMCP or
 uvicorn. The only MCP dependency is the base `mcp` SDK (for JSON-RPC type

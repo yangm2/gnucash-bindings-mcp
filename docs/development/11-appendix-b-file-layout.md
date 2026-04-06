@@ -43,7 +43,7 @@ gnucash-mcp/
 │       ├── ContainerPool.swift ← size-1 TTL pool; sleep/wake recovery (KU-11)
 │       ├── ContainerDispatch.swift ← ContainerAPIClient stdin/stdout round-trip
 │       ├── VolumeMount.swift  ← hdiutil attach/detach via Process
-│       ├── Snapshot.swift     ← tmutil / cp -c pre-session snapshot (Spike E result)
+│       ├── Backup.swift       ← cp -c pre-session clone-copy backup (Spike E: tmutil not viable)
 │       ├── Metrics.swift      ← CallRecord + SessionSummary; writes metrics.jsonl (M9.1)
 │       ├── MetricsCommand.swift ← gnucash-mcp metrics subcommand + --since/--json flags
 │       └── JSONRPCTypes.swift ← Codable MCP message types
@@ -55,7 +55,7 @@ gnucash-mcp/
 │       └── JSONRPCTests.swift
 │
 ├── Docker/
-│   └── Dockerfile             ← Ubuntu 24.04 + python3-gnucash from PPA
+│   └── Dockerfile             ← Ubuntu 26.04 + python3-gnucash from universe (no PPA)
 │
 ├── pyproject.toml             ← uv-managed Python project (container image contents)
 ├── src/

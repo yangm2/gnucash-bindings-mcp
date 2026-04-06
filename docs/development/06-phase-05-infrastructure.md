@@ -217,30 +217,33 @@ T5.3.8  GnuCash force-quit (Activity Monitor) → EXIT trap fires → sparsebund
 
 ---
 
-### M5.4 — Snapshot management
+### M5.4 — Pre-session backup (cp -c clone-copy)
+
+**Background (Spike E result):** `tmutil localsnapshot` creates snapshots on the
+sparsebundle volume but `diskutil apfs listSnapshots` cannot enumerate them on
+non-boot volumes — they are not mountable or restorable. Use `cp -c` APFS
+clone-copy instead: completes in ~51ms, produces a fully independent `.gnucash`
+file that can be opened directly in GnuCash for recovery.
 
 **Deliverables:**
-- `scripts/snapshot.zsh` with functions exported for use in both wrappers:
-  - `snapshot_create [volume_mount]`
-  - `snapshot_list [volume_mount]`
-  - `snapshot_mount <snapshot_name> <volume_device> <mountpoint>`
-  - `snapshot_restore_file <snapshot_name> <volume_device> <relative_file_path>`
-  - `snapshot_prune <keep_count> <volume_device>`
-- Pre-session snapshot integrated into Swift proxy `start` subcommand (MC-9)
+- `Backup.swift` in the Swift proxy — `BackupManager` struct:
+  - `createBackup(bookURL: URL) throws -> URL` — `cp -c` clone with timestamp suffix
+  - `pruneBackups(bookURL: URL, keepCount: Int) throws` — deletes oldest `.pre-*.gnucash` files
+- Pre-session backup integrated into Swift proxy `start` subcommand (MC-9):
+  runs `createBackup` before first container dispatch of the session
+
+**Naming:** `{book}.pre-YYYYMMDD-HHMMSS.gnucash` alongside the live book file.
 
 **Tests:**
 ```
-T5.4.1  snapshot_create creates snapshot with gnucash-mcp- prefix
-T5.4.2  snapshot_list shows the new snapshot in output
-T5.4.3  snapshot_mount mounts snapshot at given path, read-only
-T5.4.4  File from mounted snapshot matches the file as of snapshot time
-T5.4.5  snapshot_restore_file copies file from snapshot alongside live file
-        with .restored extension; original file unchanged
-T5.4.6  snapshot_prune 3 leaves exactly 3 gnucash-mcp- prefixed snapshots;
-        other snapshot types (Time Machine etc.) unaffected
-T5.4.7  Restore drill (manual, document in TEST_RESULTS.md):
-        Post a bad transaction → take snapshot → post another transaction →
-        restore from snapshot → verify bad transaction gone and book intact
+T5.4.1  createBackup produces a .pre-YYYYMMDD-HHMMSS.gnucash file alongside book
+T5.4.2  backup file content matches book at time of copy (hash comparison)
+T5.4.3  createBackup completes in < 500ms on a book file of any size (APFS CoW)
+T5.4.4  pruneBackups(keepCount: 3) leaves exactly 3 .pre-*.gnucash files;
+        the live book and other files are unaffected
+T5.4.5  Restore drill (manual, document in TEST_RESULTS.md):
+        Post a bad transaction → proxy creates backup → post another transaction →
+        open backup file directly in GnuCash → verify bad transaction absent
 ```
 
 ---

@@ -8,14 +8,11 @@ account balances. End-to-end: Claude calls a tool, a transaction appears in GnuC
 ### M1.1 — Repository and container setup
 
 **Deliverables:**
-- `Docker/Dockerfile` — Ubuntu 24.04 + `python3-gnucash` from PPA:
+- `Docker/Dockerfile` — Ubuntu 26.04 + `python3-gnucash` from universe (no PPA):
 
 ```dockerfile
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 RUN apt-get update && \
-    apt-get install -y software-properties-common && \
-    add-apt-repository ppa:gnucash/ppa && \
-    apt-get update && \
     apt-get install -y python3-gnucash python3-pip && \
     rm -rf /var/lib/apt/lists/*
 

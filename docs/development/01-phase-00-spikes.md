@@ -201,7 +201,7 @@ made during read-only probe.
 
 ---
 
-### Spike D — Read-only mount enforcement
+### Spike D — Read-only mount enforcement (`scripts/spike-d.sh`)
 
 **Question:** Does macOS GnuCash 5.15, when opened against a `-readonly` hdiutil
 mount, truly fail to write, or does it find a writable path around the mount flag?
@@ -229,13 +229,16 @@ ls -la /Volumes/GnuCash-RO/
 - File hash unchanged after GnuCash quits
 - No `.LCK` left after GnuCash quits (read-only opens should not lock)
 
+**Result: PASS.** Book hash unchanged after Cmd-S attempt. No `.LCK`, `.LNK`, or
+backup files created. GnuCash cannot write through a `-readonly` hdiutil mount.
+
 **Fail path:** If GnuCash writes through a read-only mount:
 1. macOS sandbox profile (`sandbox-exec`) to restrict GnuCash file writes
 2. Dedicated low-privilege macOS user account for GUI-only access
 
 ---
 
-### Spike E — APFS snapshots on sparsebundle volume
+### Spike E — APFS snapshots on sparsebundle volume (`scripts/spike-e.sh`)
 
 **Question:** Does `tmutil localsnapshot` work against a mounted sparsebundle
 volume as a named path argument, or only against the boot volume (`/`)?
@@ -267,6 +270,21 @@ umount "$TMP"
 - Snapshot mounts successfully at a temp path
 - Canary file in snapshot contains pre-modification content
 
+**Result: PARTIAL PASS — use `cp -c` fallback.**
+- `tmutil localsnapshot` exits 0 and reports a snapshot date, but `diskutil apfs
+  listSnapshots` returns no entries for the sparsebundle device. Snapshots on
+  non-boot APFS volumes mounted via hdiutil are not enumerable or mountable via
+  the standard `diskutil`/`mount_apfs` path.
+- **Fallback (`cp -c`) PASS:** clone-copy completes in ~51ms and correctly
+  preserves pre-modification content. APFS copy-on-write makes this near-instant
+  regardless of book file size.
+
+**Decision: use `cp -c` for pre-session backups.** The proxy creates a timestamped
+clone before opening a write session:
+```
+cp -c "$BOOK" "${BOOK%.gnucash}.pre-$(date +%Y%m%d-%H%M%S).gnucash"
+```
+
 **Fail path:** If `tmutil` only works on the boot volume:
 1. Use `cp -c` (APFS clone-copy) for cheap pre-session backups:
    `cp -c "$BOOK" "${BOOK}.pre-$(date +%Y%m%d-%H%M%S).gnucash"`
@@ -276,7 +294,7 @@ umount "$TMP"
 
 ---
 
-### Spike F — Swift proxy HTTP transport and CoWork bridge (resolves KU-8, KU-9)
+### Spike F — Swift proxy HTTP transport and CoWork bridge (`spike-f/`) (resolves KU-8, KU-9)
 
 **Question:** Does a Swift NIO HTTP server running on the macOS host, forwarding
 requests to an Apple Container via `ContainerAPIClient` stdin/stdout, appear as
@@ -293,9 +311,16 @@ connector type accepts it.)
 a JSON-RPC request to its stdin, read the response from stdout, and stop the
 container — reliably, in under 1 second?
 
+The `spike-f/` directory is a complete Swift package: `Package.swift` (swift-nio +
+swift-argument-parser), `Sources/spike-f/main.swift` (NIO HTTP server + container
+dispatch via `container run`), `Dockerfile.echo` (minimal Python echo container),
+and `run.sh` (builds both and starts the server).
+
+Build and run: `cd spike-f && ./run.sh`
+
 ```swift
 // spike-f/Sources/spike-f/main.swift — minimal Swift MCP proxy
-// Uses NIO for HTTP, ContainerAPIClient for dispatch
+// Uses NIO for HTTP, container CLI for dispatch
 // Tool: ping() → {"status": "ok", "transport": "swift-proxy"}
 
 @main struct SpikeF: AsyncParsableCommand {
@@ -393,7 +418,7 @@ cross-version schema compatibility (5.14 container vs macOS 5.15 book file).
 
 ---
 
-### Spike H — PDF extraction from directory mount (resolves KU-13)
+### Spike H — PDF extraction from directory mount (`scripts/spike-h.py`) (resolves KU-13)
 
 **Question:** Can `pdfplumber` (or `pymupdf`) running inside the Ubuntu container
 reliably extract structured invoice and bank statement fields from text-layer PDFs
@@ -516,8 +541,8 @@ before Phase 1 begins. Record results in `SPIKE_RESULTS.md`.
 | A — Python bindings | ✅ PASS (via Dockerfile.spike-g) | n/a |
 | B — VirtioFS | ✅ PASS — host↔container read/write confirmed via sparsebundle VirtioFS mount | n/a |
 | C — Schema compatibility | ✅ PASS — GnuCash 5.14 container opens macOS 5.15 book; no migration, all accounts readable | n/a |
-| D — Read-only enforcement | ☐ | |
-| E — APFS snapshots | ☐ | |
+| D — Read-only enforcement | ✅ PASS — GnuCash cannot write through -readonly hdiutil mount; no .LCK, no backup files | n/a |
+| E — APFS snapshots | ⚠️ PARTIAL — tmutil creates snapshot but diskutil cannot list it on sparsebundle; cp -c fallback PASS (51ms) | Use cp -c clone-copy for pre-session backups |
 | F — HTTP transport + CoWork bridge | ☐ | |
 | G — Ubuntu 26.04 evaluation | ✅ PASS — GnuCash 5.14 from universe, Python 3.14.3, no PPA needed | n/a |
 | H — PDF extraction from directory mount | ☐ (non-blocking; run before Phase 6 PDF workflows) | |

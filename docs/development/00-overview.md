@@ -17,12 +17,12 @@ as a read-only inspection GUI.
 | Tool catalog | Swift structs, compiled-in | Static; no container needed for `tools/list` |
 | Static resources | Swift string constants | `gnucash://book-setup-guide` etc.; no container |
 | Tool architecture | 3-tier: operational / administrative / resources | See MC-8 |
-| Container runtime | Ubuntu 24 Linux container, per-request pool | Apple Container on macOS 26; pool size 1, 5s TTL |
-| GnuCash bindings | Official Python bindings (`python3-gnucash`) | `ppa:gnucash/ppa` → 5.14 (`1:5.14-0build1`); no build from source |
+| Container runtime | Ubuntu 26.04 Linux container, per-request pool | Apple Container on macOS 26; pool size 1, 5s TTL |
+| GnuCash bindings | Official Python bindings (`python3-gnucash`) | Ubuntu 26.04 universe → 5.14; no PPA, no build from source |
 | Python dispatcher | One-shot stdin→stdout JSON-RPC handler | No FastMCP/uvicorn; pure dispatch |
 | Volume mount | APFS sparsebundle managed by Swift proxy | `hdiutil` via `Process`; mount before first call |
 | Write-ahead log | Append-only JSONL | Crash recovery / replay |
-| Snapshot management | APFS `tmutil` + `diskutil apfs` | Pre-session snapshots |
+| Snapshot management | `cp -c` APFS clone-copy | Pre-session backup; ~50ms regardless of book size |
 | GUI | macOS GnuCash 5.15 | Read-only via `-readonly` mount |
 | GUI wrapper | zsh (`gnucash-browse`) | Read-only mount + wait on GnuCash PID |
 
@@ -40,18 +40,18 @@ can proceed with confidence. Each has a designated spike in Phase 0.
 
 | # | Unknown | Risk if wrong | Resolved in |
 |---|---|---|---|
-| KU-1 | Does `python3-gnucash` from `ppa:gnucash/ppa` on Ubuntu Noble arm64 install cleanly and successfully `import gnucash` inside an Apple Container? The PPA publishes the package for arm64/Noble but this has not been tested in the Apple Container VirtioFS environment. | If bindings fail, must pivot to piecash or XML parsing | Phase 0, Spike A |
+| KU-1 | Does `python3-gnucash` from `ppa:gnucash/ppa` on Ubuntu Noble arm64 install cleanly and successfully `import gnucash` inside an Apple Container? The PPA publishes the package for arm64/Noble but this has not been tested in the Apple Container VirtioFS environment. | If bindings fail, must pivot to piecash or XML parsing | **Resolved — Spike G:** Ubuntu 26.04 universe ships GnuCash 5.14 directly; no PPA needed. `import gnucash` succeeds. |
 | KU-2 | Does VirtioFS correctly expose an APFS sparsebundle mount point to the Linux container with read-write semantics? | File sharing architecture fails; must use alternative (SSHFS, copy-based) | Phase 0, Spike B |
 | KU-3 | Can GnuCash 5.14 (container, from PPA) open a file last saved by GnuCash 5.15 (macOS) without triggering a schema migration? One minor version gap. | Cross-version file sharing fails; must pin both to same version | Phase 0, Spike C |
 | KU-4 | Does `hdiutil attach -readonly` on a `.sparsebundle` genuinely prevent writes at the kernel level, or does macOS GnuCash find a writable path? | Read-only guarantee is illusory; need alternative enforcement | Phase 0, Spike D |
-| KU-5 | Does `tmutil localsnapshot` work on a mounted sparsebundle volume (not the boot volume)? | Must use file-copy backup instead of APFS snapshots | Phase 0, Spike E |
+| KU-5 | Does `tmutil localsnapshot` work on a mounted sparsebundle volume (not the boot volume)? | Must use file-copy backup instead of APFS snapshots | **Resolved — Spike E:** `tmutil` creates snapshot but `diskutil` cannot enumerate it on non-boot volumes. Use `cp -c` clone-copy (~51ms). |
 | KU-6 | Does the GnuCash Python binding `Session.save()` durably flush to the XML file on disk, or does it require `Session.end()`? | Data loss on MCP crash between save and end | **Answered by example scripts** — `save()` and `end()` are separate: `save()` flushes to disk (always required for file backend per Session class docstring); `end()` only releases the `.LCK` file. Data is durable after `save()` alone. Additional finding: `new_book_with_opening_balances.py` calls `session.save()` immediately after opening a new book, before any mutations, with a comment that skipping this early save caused corruption. Session manager must do the same. |
 | KU-7 | Does `open --wait-apps` in the zsh wrapper reliably block until the GnuCash process fully exits, including cleanup? | Premature detach of sparsebundle while GnuCash still holds file handles | Phase 5, GUI wrapper test |
 | KU-8 | Does Claude Desktop's `streamable-http` connector accept a plain HTTP (non-TLS) connection to `localhost:8980` from a natively-running Swift proxy? | Must use HTTPS or an alternate registration mechanism | Phase 0, Spike F |
 | KU-9 | Does Claude Desktop's `streamable-http` MCP connector correctly bridge to CoWork's VM via the SDK passthrough layer? | CoWork cannot use GnuCash tools despite Claude Desktop connecting successfully | Phase 0, Spike F |
 | KU-10 | Does Claude reliably read `gnucash://session-context` at session start via the `server_instructions` reference, or does it skip it? | Tool conventions and resource index not loaded; Claude makes suboptimal tool choices without the context | Phase 1, integration test |
 | KU-11 | After Mac sleep/wake, does the pooled container handle held by the Swift proxy become stale (VM suspended/killed)? How does `ContainerAPIClient` signal this? | Proxy forwards request to a dead container; tool call hangs or returns garbage | Phase 5, Swift proxy integration |
-| KU-12 | Ubuntu 26.04 LTS (releasing end of April 2026) — does `ppa:gnucash/ppa` publish arm64 packages for 26.04 in time to use it as the container base? What version of GnuCash ships in universe if the PPA is not yet available? | Must stay on 24.04 or ship a stale GnuCash version; Spike C re-validation required if base changes | Phase 0, Spike G |
+| KU-12 | Ubuntu 26.04 LTS (releasing end of April 2026) — does `ppa:gnucash/ppa` publish arm64 packages for 26.04 in time to use it as the container base? What version of GnuCash ships in universe if the PPA is not yet available? | Must stay on 24.04 or ship a stale GnuCash version; Spike C re-validation required if base changes | **Resolved — Spike G:** Ubuntu 26.04 universe ships GnuCash 5.14, Python 3.14.3. PPA not needed. Using `FROM ubuntu:26.04`. |
 | KU-13 | Can `pdfplumber` (or `pymupdf`) reliably extract structured fields (vendor, invoice number, line items, totals) from text-layer PDFs as produced by typical architecture/engineering firms and the project bank? If PDFs are scanned, OCR adds a dependency (tesseract) and quality risk. | PDF invoice and statement workflows require Claude vision input (high token cost) or manual data entry; path-based container mount approach fails for scanned docs | Phase 0, Spike H |
 
 ---
@@ -120,37 +120,25 @@ proxy forwards via `Process` pipes rather than HTTP. See MC-9 for the full
 Swift proxy architecture and fallback paths.
 
 ### MC-5: Container image base
-**Decision:** `ubuntu:24.04` (Noble) with GnuCash and Python bindings installed
-from `ppa:gnucash/ppa` via `apt-get install python3-gnucash`.
-**Rationale:** The GnuCash packaging team PPA (`ppa:gnucash/ppa`) publishes
-`python3-gnucash` for Ubuntu Noble arm64 — the exact platform the Apple Container
-runs on. This eliminates the multi-hour build-from-source requirement that was
-the original rationale for this decision. The PPA version tracks GnuCash releases
-promptly and is maintained by the GnuCash upstream team.
-
-**Version selection:** The PPA currently provides GnuCash **5.14** (`1:5.14-0build1`)
-for Noble. The macOS GnuCash GUI is at 5.15 — a one-minor-version gap, the same
-situation the original build-from-source plan assumed. Spike C validates whether
-5.14 can open files saved by 5.15 without migration. Pin the container to
-`python3-gnucash=1:5.14-0build1` for reproducible builds; update when the PPA
-publishes 5.15.
+**Decision:** `ubuntu:26.04` with GnuCash 5.14 and Python 3.14.3 installed
+directly from Ubuntu universe via `apt-get install python3-gnucash`. No PPA required.
+**Rationale (updated after Spike G):** Ubuntu 26.04 ships GnuCash 5.14 in universe
+without any PPA. This simplifies the Dockerfile (no `add-apt-repository`,
+no GPG key, no PPA network dependency) and uses the newer LTS base.
+Spike C confirmed 5.14 opens files saved by macOS GnuCash 5.15 without migration.
 
 ```dockerfile
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 RUN apt-get update && \
-    apt-get install -y software-properties-common && \
-    add-apt-repository ppa:gnucash/ppa && \
-    apt-get update && \
-    apt-get install -y python3-gnucash
+    apt-get install -y python3-gnucash && \
+    rm -rf /var/lib/apt/lists/*
 ```
 
-**Dockerfile build time:** minutes, not hours. No cmake, no swig, no source clone.
+**Dockerfile build time:** minutes, not hours. No cmake, no swig, no source clone, no PPA.
 
-**Review trigger:** If Spike C finds that 5.14 cannot open 5.15-saved files:
-1. Pin macOS GnuCash to 5.14 (download specific .dmg from gnucash.org) — matches
-   the container exactly, eliminating the version gap
-2. Wait for the PPA to publish 5.15 for Noble, then update the container pin
-3. Fall back to build from source at exactly 5.15 (original plan)
+**Review trigger:** If the macOS GnuCash GUI is updated to a version that 5.14
+cannot open (schema change), pin macOS GnuCash to 5.14 or wait for 26.04 universe
+to update.
 
 ### MC-6: Chart of accounts structure
 **Decision:** Model each vendor as its own AP account under `Liabilities`.
@@ -250,12 +238,16 @@ mirroring the construction accounts:
 This separation keeps the original contract budget clean while making ECO costs
 visible independently and in aggregate.
 
-### MC-7: Snapshot naming convention
-**Decision:** `gnucash-mcp-YYYYMMDD-HHMMSS` prefix for MCP-created snapshots.
-Prune to keep last 10. GnuCash auto-backups (`.YYYYMMDDHHMMSS.gnucash`) retained
-per GnuCash default (30 days).
-**Rationale:** Distinguishes MCP snapshots from Time Machine and system snapshots
-in `diskutil apfs listSnapshots` output.
+### MC-7: Pre-session backup mechanism
+**Decision:** `cp -c` APFS clone-copy before each write session. Naming:
+`{book}.pre-YYYYMMDD-HHMMSS.gnucash`. Keep last 10; prune older on session start.
+GnuCash auto-backups (`.YYYYMMDDHHMMSS.gnucash`) retained per GnuCash default (30 days).
+**Rationale (updated after Spike E):** `tmutil localsnapshot` creates snapshots on
+the sparsebundle volume but `diskutil apfs listSnapshots` cannot enumerate them —
+the snapshots are not mountable or restorable via standard tools. `cp -c` uses
+APFS copy-on-write and completes in ~51ms regardless of book file size. The copy
+is a fully independent file that can be opened directly in GnuCash for recovery,
+with no snapshot mounting required.
 
 ---
 
@@ -378,7 +370,7 @@ the Swift layer receives protocol requests and dispatches containers via
 - Container pool management (size 1, 5s TTL)
 - Per-request container dispatch for tool calls and dynamic resources
 - SIGTERM / SIGINT handling → drain pool → detach sparsebundle → exit
-- Pre-session APFS snapshot (via `Process` / `tmutil`)
+- Pre-session `cp -c` clone-copy backup (via `Process`; ~51ms)
 
 **Python container owns:**
 - GnuCash session lifecycle (open, write, save, end — MC-2)
