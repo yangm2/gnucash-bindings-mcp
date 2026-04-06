@@ -403,12 +403,32 @@ T1.5.12 Via Swift proxy: CoWork can call get_project_summary() (manual;
     - Debit Project Checking, credit Interest Income
 
 Each write tool: appends WAL entry → opens session → posts transaction →
-`session.save()` → `session.end()` → marks WAL committed.
+**stamps MCP slots** → `session.save()` → `session.end()` → marks WAL committed.
+
+**MCP slots on every posted transaction:**
+
+```python
+# src/tools/write.py — applied immediately after txn.SetDate / txn.SetDescription
+txn.SetSlot("mcp-wal-id",  wal_entry["id"])      # links back to WAL record
+txn.SetSlot("mcp-tool",    tool_name)             # e.g. "receive_invoice"
+txn.SetSlot("mcp-version", "1")                   # schema version for future migrations
+```
+
+These slots survive GnuCash saves, GUI opens, and APFS snapshot restores.
+They appear in `get_transaction` output and allow `get_audit_log` to cross-reference
+WAL entries with live GnuCash transactions without a GUID join.
+
+The WAL entry is updated with `transaction_guid` after `txn.GetGUID()` is available
+(post-commit), so both sides of the link are bidirectional:
+- WAL → GnuCash: `wal_entry["transaction_guid"]`
+- GnuCash → WAL: `txn.GetSlot("mcp-wal-id")`
 
 **Tests:**
 ```
 T1.6.1  fund_project posts balanced transaction (sum of splits = 0)
-T1.6.2  fund_project WAL entry has committed_at after tool returns
+T1.6.2  fund_project WAL entry has committed_at and transaction_guid after tool returns
+T1.6.2b fund_project transaction has mcp-wal-id and mcp-tool slots readable via
+        GnuCash Python bindings after session.end()
 T1.6.3  receive_invoice creates correct AP balance for named vendor
 T1.6.4  pay_invoice clears AP balance to $0.00 when matching invoice amount
 T1.6.5  post_transaction with unbalanced splits raises SplitsImbalanceError (not posted,

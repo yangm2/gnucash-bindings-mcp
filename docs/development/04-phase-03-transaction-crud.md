@@ -46,8 +46,43 @@ def get_transaction(
     transaction_guid: str,
 ) -> dict:
     """Return full detail of a single transaction including all splits,
-    reconciliation state, void status, and notes."""
+    reconciliation state, void status, notes, and MCP provenance slots."""
 ```
+
+**`get_transaction` return shape:**
+
+```json
+{
+  "guid": "f1e2d3c4b5a6...",
+  "date": "2025-04-01",
+  "description": "AAI-102",
+  "notes": "",
+  "is_void": false,
+  "void_reason": null,
+  "mcp": {
+    "wal_id": "a1b2c3d4",
+    "tool": "receive_invoice"
+  },
+  "splits": [
+    {
+      "account": "Expenses:Architecture — Acme Architecture",
+      "amount": "25000.00",
+      "memo": "AAI-102",
+      "reconcile_state": "n"
+    },
+    {
+      "account": "Liabilities:AP — Acme Architecture",
+      "amount": "-25000.00",
+      "memo": "AAI-102",
+      "reconcile_state": "n"
+    }
+  ]
+}
+```
+
+MCP slots (`mcp-wal-id`, `mcp-tool`) are read via `txn.GetSlot()` and surfaced
+under the `"mcp"` key. Transactions posted outside the MCP (e.g. via direct
+GnuCash GUI entry) will have `"mcp": null`.
 
 **Design notes:**
 
@@ -81,7 +116,12 @@ T3.1.8  delete_transaction with confirm=True removes transaction; balance correc
 T3.1.9  get_transaction returns all splits with account paths and reconcile state
 T3.1.10 get_transaction on voided transaction shows void status and reason
 T3.1.11 After void_transaction + new correcting entry: net balance matches expected
-         (end-to-end: receive wrong invoice amount → void → re-receive correct amount)
+        (end-to-end: receive wrong invoice amount → void → re-receive correct amount)
+T3.1.12 get_transaction on an MCP-posted transaction returns mcp.wal_id matching the
+        WAL entry id and mcp.tool matching the tool name
+T3.1.13 get_transaction on a GUI-posted transaction (no slots) returns mcp: null
+T3.1.14 WAL entry transaction_guid matches the guid field in get_transaction output
+        (bidirectional link verified: WAL→GnuCash and GnuCash→WAL)
 ```
 
 ---
@@ -125,6 +165,10 @@ Example output entry:
   "transaction_guid": "f1e2d3c4b5a6..."
 }
 ```
+
+`transaction_guid` links to the live GnuCash transaction. The reverse link
+(`mcp-wal-id` slot on the transaction) points back to this WAL entry `id`.
+Both directions are set before the tool returns.
 
 **Tests:**
 ```
