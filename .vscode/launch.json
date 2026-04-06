@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:gnucash-bindings-mcp}/spike-f",
+            "name": "Debug spike-f (spike-f)",
+            "target": "spike-f",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug spike-f (spike-f)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:gnucash-bindings-mcp}/spike-f",
+            "name": "Release spike-f (spike-f)",
+            "target": "spike-f",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release spike-f (spike-f)"
+        }
+    ]
+}

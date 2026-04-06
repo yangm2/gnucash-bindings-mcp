@@ -12,7 +12,7 @@ as a read-only inspection GUI.
 |---|---|---|
 | Ledger storage | GnuCash 5.x, XML backend | `.sparsebundle` on macOS APFS |
 | MCP proxy | Swift binary (`gnucash-mcp`) | Persistent daemon; owns MCP protocol + lifecycle |
-| MCP transport | Streamable HTTP, `localhost:8980` | Proxy listens; Claude Desktop connects |
+| MCP transport | stdio (Claude Desktop) | Swift binary registered as `command` in `claude_desktop_config.json`; bridges stdio↔container |
 | CoWork integration | Claude Desktop SDK bridge | CoWork VM → Desktop → proxy |
 | Tool catalog | Swift structs, compiled-in | Static; no container needed for `tools/list` |
 | Static resources | Swift string constants | `gnucash://book-setup-guide` etc.; no container |
@@ -47,8 +47,8 @@ can proceed with confidence. Each has a designated spike in Phase 0.
 | KU-5 | Does `tmutil localsnapshot` work on a mounted sparsebundle volume (not the boot volume)? | Must use file-copy backup instead of APFS snapshots | **Resolved — Spike E:** `tmutil` creates snapshot but `diskutil` cannot enumerate it on non-boot volumes. Use `cp -c` clone-copy (~51ms). |
 | KU-6 | Does the GnuCash Python binding `Session.save()` durably flush to the XML file on disk, or does it require `Session.end()`? | Data loss on MCP crash between save and end | **Answered by example scripts** — `save()` and `end()` are separate: `save()` flushes to disk (always required for file backend per Session class docstring); `end()` only releases the `.LCK` file. Data is durable after `save()` alone. Additional finding: `new_book_with_opening_balances.py` calls `session.save()` immediately after opening a new book, before any mutations, with a comment that skipping this early save caused corruption. Session manager must do the same. |
 | KU-7 | Does `open --wait-apps` in the zsh wrapper reliably block until the GnuCash process fully exits, including cleanup? | Premature detach of sparsebundle while GnuCash still holds file handles | Phase 5, GUI wrapper test |
-| KU-8 | Does Claude Desktop's `streamable-http` connector accept a plain HTTP (non-TLS) connection to `localhost:8980` from a natively-running Swift proxy? | Must use HTTPS or an alternate registration mechanism | Phase 0, Spike F |
-| KU-9 | Does Claude Desktop's `streamable-http` MCP connector correctly bridge to CoWork's VM via the SDK passthrough layer? | CoWork cannot use GnuCash tools despite Claude Desktop connecting successfully | Phase 0, Spike F |
+| KU-8 | Does Claude Desktop's `streamable-http` connector accept a plain HTTP (non-TLS) connection to `localhost:8980` from a natively-running Swift proxy? | Must use HTTPS or an alternate registration mechanism | **Resolved — Spike F:** `streamable-http` type is rejected by `claude_desktop_config.json`. Use stdio: register Swift binary as `command` entry with `--stdio` flag. Proxy bridges stdio↔container internally. |
+| KU-9 | Does Claude Desktop's `streamable-http` MCP connector correctly bridge to CoWork's VM via the SDK passthrough layer? | CoWork cannot use GnuCash tools despite Claude Desktop connecting successfully | **Resolved — Spike F:** CoWork receives tools through Claude Desktop's stdio bridge with no additional config. `ping()` confirmed from CoWork. |
 | KU-10 | Does Claude reliably read `gnucash://session-context` at session start via the `server_instructions` reference, or does it skip it? | Tool conventions and resource index not loaded; Claude makes suboptimal tool choices without the context | Phase 1, integration test |
 | KU-11 | After Mac sleep/wake, does the pooled container handle held by the Swift proxy become stale (VM suspended/killed)? How does `ContainerAPIClient` signal this? | Proxy forwards request to a dead container; tool call hangs or returns garbage | Phase 5, Swift proxy integration |
 | KU-12 | Ubuntu 26.04 LTS (releasing end of April 2026) — does `ppa:gnucash/ppa` publish arm64 packages for 26.04 in time to use it as the container base? What version of GnuCash ships in universe if the PPA is not yet available? | Must stay on 24.04 or ship a stale GnuCash version; Spike C re-validation required if base changes | **Resolved — Spike G:** Ubuntu 26.04 universe ships GnuCash 5.14, Python 3.14.3. PPA not needed. Using `FROM ubuntu:26.04`. |
@@ -88,36 +88,31 @@ Entries written before GnuCash session opens; `committed_at` set after
 **Review trigger:** If replay logic becomes complex due to partial transaction state.
 
 ### MC-4: MCP transport
-**Decision:** Streamable HTTP, not stdio.
-**Rationale:** CoWork runs inside its own Apple Virtualization Framework Linux VM
-(Ubuntu 22.04, separate from our Apple Container). Claude Desktop's stdio transport
-spawns MCP servers as macOS-host child processes — it cannot spawn processes inside
-a different VM. The Swift proxy (MC-9) runs as a persistent macOS process and owns
-the HTTP listener on `localhost:8980`. Claude Desktop connects via `streamable-http`,
-and CoWork receives tools through Claude Desktop's SDK bridge.
+**Decision:** stdio. The Swift proxy binary is registered as a `command` entry in
+`claude_desktop_config.json` and speaks newline-delimited JSON-RPC on stdin/stdout.
+It bridges internally to the GnuCash container via `ContainerAPIClient`/`container run`.
+
+**Rationale (updated after Spike F):** Claude Desktop's `claude_desktop_config.json`
+does not accept `streamable-http` as a server type — entries with that type are
+silently skipped. The stdio transport works correctly: Claude Desktop spawns the
+Swift binary as a child process, sends JSON-RPC requests on stdin, and reads
+responses from stdout. The proxy handles the stdio↔container bridge internally.
 
 `claude_desktop_config.json` entry (managed by Swift proxy's `install` subcommand):
 ```json
 {
   "mcpServers": {
     "gnucash-myproject": {
-      "type": "streamable-http",
-      "url": "http://localhost:8980/mcp"
+      "command": "/usr/local/bin/gnucash-mcp",
+      "args": ["--stdio"]
     }
   }
 }
 ```
 
-The Swift proxy HTTP server runs on `localhost:8980`. The GnuCash container does
-**not** publish a port — the proxy dispatches to containers via `ContainerAPIClient`
-and communicates over stdin/stdout (one-shot per request). There is no uvicorn,
-no FastMCP HTTP server inside the container.
-
-**Review trigger:** If Apple Container's port publishing does not expose
-`localhost:8980` to macOS host (KU-8). In that case the Swift proxy still owns
-the HTTP listener — the container switches to stdin/stdout dispatch and the
-proxy forwards via `Process` pipes rather than HTTP. See MC-9 for the full
-Swift proxy architecture and fallback paths.
+The GnuCash container does **not** publish a port — the proxy dispatches to
+containers via `ContainerAPIClient` and communicates over stdin/stdout (one-shot
+per request). There is no uvicorn, no FastMCP HTTP server inside the container.
 
 ### MC-5: Container image base
 **Decision:** `ubuntu:26.04` with GnuCash 5.14 and Python 3.14.3 installed

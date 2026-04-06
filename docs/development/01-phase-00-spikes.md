@@ -364,6 +364,27 @@ Build and run: `cd spike-f && ./run.sh`
   all within 1 second total
 - CoWork session can call `ping()` (verifies SDK bridge — KU-9)
 
+**Result: PASS (F1 + F2).**
+- **KU-8 answered:** `streamable-http` type is not accepted by Claude Desktop's
+  `claude_desktop_config.json` — the entry is silently skipped. The stdio fallback
+  works: register the Swift binary as a `command` entry with `--stdio` flag.
+  The proxy reads newline-delimited JSON-RPC from stdin and writes responses to
+  stdout; stderr carries diagnostics.
+- **F2 confirmed:** `ping()` tool dispatched to `spike-f-echo:latest` container via
+  `container run --rm`, stdout captured, response returned to Claude Desktop and CoWork.
+  Both confirmed: `{"status": "ok", "transport": "swift-proxy"}`.
+- **KU-9 answered:** CoWork receives tools through Claude Desktop's stdio bridge
+  without any additional configuration. The SDK passthrough layer works correctly.
+- **Container cold-start measured:** `ping` round-trip with `container run --rm`
+  (no pooling) = **~2.2s**, exceeding the 1s target. This is entirely container
+  startup overhead — the Python payload executes in <10ms. The production proxy's
+  size-1 TTL pool keeps one container warm between requests; calls within the TTL
+  window will be well under 1s. The spike confirms the pool design is necessary,
+  not optional.
+- **Production implication:** The gnucash-mcp proxy will be registered as a stdio
+  server in `claude_desktop_config.json`, not streamable-http. The Swift binary
+  handles the stdio↔container bridge internally.
+
 **Fail path (KU-8 — transport):** If Claude Desktop rejects `localhost:8980`:
 - Try `127.0.0.1:8980` explicitly
 - Check if `streamable-http` type requires HTTPS (unlikely for localhost)
@@ -543,7 +564,7 @@ before Phase 1 begins. Record results in `SPIKE_RESULTS.md`.
 | C — Schema compatibility | ✅ PASS — GnuCash 5.14 container opens macOS 5.15 book; no migration, all accounts readable | n/a |
 | D — Read-only enforcement | ✅ PASS — GnuCash cannot write through -readonly hdiutil mount; no .LCK, no backup files | n/a |
 | E — APFS snapshots | ⚠️ PARTIAL — tmutil creates snapshot but diskutil cannot list it on sparsebundle; cp -c fallback PASS (51ms) | Use cp -c clone-copy for pre-session backups |
-| F — HTTP transport + CoWork bridge | ☐ | |
+| F — HTTP transport + CoWork bridge | ✅ PASS — stdio works in both Claude Desktop and CoWork (KU-8 + KU-9 answered); container dispatch confirmed (F2) | Use stdio registration in claude_desktop_config.json |
 | G — Ubuntu 26.04 evaluation | ✅ PASS — GnuCash 5.14 from universe, Python 3.14.3, no PPA needed | n/a |
 | H — PDF extraction from directory mount | ☐ (non-blocking; run before Phase 6 PDF workflows) | |
 

@@ -1,0 +1,6 @@
+# Dockerfile.echo — minimal Python container for Spike F dispatch target (F2)
+# Build: docker build -f Dockerfile.echo -t spike-f-echo:latest .
+#   or:  container build -f Dockerfile.echo -t spike-f-echo:latest .
+FROM ubuntu:26.04
+RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
+# No CMD — spike-f passes the command via `container run <image> python3 -c "..."`
