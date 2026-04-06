@@ -533,6 +533,27 @@ Confirm: container can read PDFs from `/invoices`, cannot write to it.
 - Read-only mount confirmed: write attempt to `/invoices` fails with permission error
 - Extraction completes in < 2 seconds per PDF page (not a bottleneck)
 
+**Results (Linea Lab quotes/specs/orders):**
+- **H1 PASS:** All 3 PDFs correctly identified as text-layer (0.08–0.13s each).
+- **H2 FAIL (66%):** Regex extraction broke down on quote/spec document formats:
+  - First-line "vendor" heuristic captured section headers ("PROPOSAL") and part
+    numbers ("PRIR34452SS") rather than company names
+  - Date regex matched dimensions/fractions ("21-3/16") rather than calendar dates
+  - Ref regex matched random alphanumeric strings ("erter", "ERTER")
+  - Total regex found arbitrary dollar amounts rather than invoice totals
+  - 10.29s on the Spec PDF (large document; pdfplumber slow on dense vector PDFs)
+  - Conclusion: generic regex extraction cannot meet ≥90% without per-vendor
+    layout tuning, which is not worth building for a handful of vendors
+- **H3 not tested:** No bank statement PDFs available at time of spike.
+- **H4 PASS:** Write attempt to read-only `/invoices` mount raises `OSError: Read-only file system`.
+
+**Decision: fall back to Claude vision for invoice field extraction.** The text
+layer is present (free extraction is possible in principle) but the document layouts
+are too varied for generic regex. Claude vision reads the PDF page as an image and
+extracts structured fields with high accuracy — effectively free at the token costs
+of this project. The container mount path (H4) still works: PDFs are passed via
+volume mount; Claude receives the extracted text or image depending on document type.
+
 **Fail paths:**
 
 | Failure | Fallback |
@@ -566,7 +587,7 @@ before Phase 1 begins. Record results in `SPIKE_RESULTS.md`.
 | E — APFS snapshots | ⚠️ PARTIAL — tmutil creates snapshot but diskutil cannot list it on sparsebundle; cp -c fallback PASS (51ms) | Use cp -c clone-copy for pre-session backups |
 | F — HTTP transport + CoWork bridge | ✅ PASS — stdio works in both Claude Desktop and CoWork (KU-8 + KU-9 answered); container dispatch confirmed (F2) | Use stdio registration in claude_desktop_config.json |
 | G — Ubuntu 26.04 evaluation | ✅ PASS — GnuCash 5.14 from universe, Python 3.14.3, no PPA needed | n/a |
-| H — PDF extraction from directory mount | ☐ (non-blocking; run before Phase 6 PDF workflows) | |
+| H — PDF extraction from directory mount | ⚠️ PARTIAL — H1 PASS (text layer), H4 PASS (read-only); H2 FAIL 66% (regex too generic for quote/spec layouts); H3 not tested (no statements) | Fall back to Claude vision for field extraction |
 
 ---
 
