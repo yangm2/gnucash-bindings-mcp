@@ -1,4 +1,5 @@
-import json, sys
+import json
+import sys
 from gnucash_mcp.dispatch import dispatch
 
 def main():

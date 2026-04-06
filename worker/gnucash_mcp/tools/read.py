@@ -18,7 +18,6 @@ def _book_path() -> Path:
 
 def _subtree_balance_float(acc) -> float:
     """Recursively sum balance of acc and all its descendants as a float."""
-    import gnucash.gnucash_core_c as gc
     total = acc.GetBalance().to_double()
     for child in acc.get_children():
         total += _subtree_balance_float(child)
@@ -28,7 +27,6 @@ def _subtree_balance_float(acc) -> float:
 def _balance_str(gnc_numeric) -> str:
     """Convert GncNumeric to a human-readable decimal string."""
     try:
-        from gnucash import GncNumeric
         return f"{gnc_numeric.to_double():.2f}"
     except Exception:
         return str(gnc_numeric)
@@ -55,7 +53,6 @@ def _split_to_dict(split) -> dict:
 
 
 def _txn_to_dict(txn) -> dict:
-    from gnucash import GncNumeric
     splits = [_split_to_dict(s) for s in txn.GetSplitList()]
     return {
         "guid": str(txn.GetGUID()),

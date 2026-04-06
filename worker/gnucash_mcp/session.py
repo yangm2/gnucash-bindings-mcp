@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from gnucash import Session, GnuCashBackendException, SessionOpenMode
+from gnucash import Session, SessionOpenMode
 from gnucash import ERR_BACKEND_LOCKED, ERR_FILEIO_FILE_NOT_FOUND  # noqa: F401
 from gnucash import GncNumeric
 
