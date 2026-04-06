@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """spike-c.py — run inside the container against a file saved by macOS 5.15
+
+% container run -it --rm -v ../scripts:/mnt/scripts -v /Volumes/GnuCash-Spike:/data spike-g
 """
 from gnucash import Session, SessionOpenMode
 

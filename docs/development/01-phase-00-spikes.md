@@ -186,6 +186,11 @@ print("PASS: opened cleanly, no migration")
 - Account tree readable
 - No writes made to the file during open + read + end
 
+**Result: PASS.** GnuCash 5.14 (Ubuntu 26.04 container) opened a book saved by
+macOS GnuCash 5.15 without migration prompt or error. Default account tree
+(`Assets`, `Liabilities`, `Income`, `Expenses`, `Equity`) readable. No writes
+made during read-only probe.
+
 **Fail path:**
 1. The GnuCash XML schema has been stable across 5.x minor releases; a migration
    prompt is unexpected but possible if 5.15 introduced schema changes. Check the
@@ -510,7 +515,7 @@ before Phase 1 begins. Record results in `SPIKE_RESULTS.md`.
 |---|---|---|
 | A — Python bindings | ✅ PASS (via Dockerfile.spike-g) | n/a |
 | B — VirtioFS | ✅ PASS — host↔container read/write confirmed via sparsebundle VirtioFS mount | n/a |
-| C — Schema compatibility | ☐ | |
+| C — Schema compatibility | ✅ PASS — GnuCash 5.14 container opens macOS 5.15 book; no migration, all accounts readable | n/a |
 | D — Read-only enforcement | ☐ | |
 | E — APFS snapshots | ☐ | |
 | F — HTTP transport + CoWork bridge | ☐ | |
