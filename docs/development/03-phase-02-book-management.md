@@ -96,104 +96,137 @@ T2.1.14 Claude fetches gnucash://book-setup-guide before calling book_add_accoun
 @app.tool()
 def vendor_add(
     name: str,
-    expense_category: str = "Subcontracts",
+    trade: str | None = None,
+    expense_category: str | None = None,
 ) -> dict:
-    """Add a new vendor/subcontractor. Creates AP liability account and
-    expense account. Read gnucash://vendor-guide for expense_category
-    options before calling. Example: vendor_add('Pacific Crest Electrical',
-    expense_category='Subcontracts')"""
+    """Add a new vendor. Exactly one of `trade` or `expense_category` must be provided.
+
+    trade: full account path of an existing trade expense account. The vendor's
+    invoices will be coded to this shared account. No new expense account is created.
+    Use for construction subcontractors where the trade account already exists.
+    Example: vendor_add('Pacific Crest Electrical', trade='Construction:Electrical')
+
+    expense_category: creates a new dedicated expense account for this vendor.
+    Use for professional fee vendors with individually-named contracts.
+    Example: vendor_add('Acme Architecture', expense_category='Architecture')
+
+    Read gnucash://vendor-guide for valid trade paths and expense_category values."""
 
 @app.tool()
 def vendor_list() -> list[dict]:
-    """List all vendors with AP account path, current balance, and total paid."""
+    """List all vendors with type (trade|professional), AP account path,
+    expense account or trade path, current balance, and total paid."""
 
 @app.tool()
 def vendor_get_details(name: str) -> dict:
-    """Return AP account path, expense account path, current balance,
-    and transaction history for a named vendor."""
+    """Return vendor type, AP account path, expense account or trade path,
+    current balance, and transaction history for a named vendor."""
 
 @app.tool()
 def vendor_rename(old_name: str, new_name: str) -> dict:
-    """Rename a vendor — updates both AP and expense account names atomically.
-    Use when vendor name changes or was entered incorrectly.
+    """Rename a vendor. For professional vendors, updates both AP and expense
+    account names atomically. For trade vendors, updates AP account name only
+    (the shared trade expense account is unaffected).
     Does not affect existing transactions (accounts tracked by GUID)."""
 
 @app.tool()
 def vendor_update(
     name: str,
-    new_expense_category: str,
+    trade: str | None = None,
+    expense_category: str | None = None,
 ) -> dict:
-    """Move a vendor's expense account to a different expense category.
-    Use when the wrong expense_category was supplied to vendor_add.
-    Moves the expense account to the correct parent path.
-    Does NOT migrate historical transactions to the new account path —
-    existing transactions stay on the old account. Only future invoices
-    will use the new path. Read gnucash://vendor-guide for valid categories."""
+    """Change the expense coding for a vendor. Exactly one of `trade` or
+    `expense_category` must be provided.
+
+    For professional vendors: moves their dedicated expense account to a new
+    category. Does NOT restate historical transactions — existing splits stay
+    on the old account path; only future invoices use the new path.
+
+    For trade vendors: reassigns to a different trade expense account. The old
+    trade account is unaffected. Useful when a vendor's scope changed mid-project.
+
+    Read gnucash://vendor-guide for valid values."""
 
 @app.tool()
 def vendor_delete(
     name: str,
     confirm: bool = False,
 ) -> dict:
-    """Delete a vendor — removes both AP and expense accounts.
-    Requires confirm=True. Fails if either account has transactions
-    (use vendor_get_details to check balance and history first).
-    For vendors with history, consider leaving accounts in place —
-    zero-balance AP accounts are invisible in normal operation."""
+    """Delete a vendor. Requires confirm=True.
+    For professional vendors: removes both AP and dedicated expense accounts.
+    For trade vendors: removes only the AP account (shared trade account unaffected).
+    Fails if the AP account has any transactions — use vendor_get_details to check
+    first. For vendors with history, leave in place: zero-balance AP accounts are
+    invisible in AP aging reports."""
 ```
 
-`vendor_add` creates two accounts atomically in a single GnuCash session:
-- `Liabilities:AP — {name}`
-- `Expenses:Construction — {expense_category}:{name}` (for subs)
-  or `Expenses:{expense_category} — {name}` (for consultants)
+**Account creation by vendor type:**
 
-**Design note on `vendor_update`:** Moving a vendor's expense account changes
-where *future* invoices are coded, but does not restate *historical* transactions.
-This is correct accounting behaviour — you don't reclass past expenses when you
-correct a categorisation error going forward. If historical restatement is needed,
-it requires voiding and reposting the relevant transactions manually.
+| Scenario | Accounts created | Accounts reused |
+|---|---|---|
+| Trade vendor (`trade=`) | `Liabilities:AP — {name}` | Existing `Expenses:{trade}` |
+| Professional vendor (`expense_category=`) | `Liabilities:AP — {name}`, `Expenses:{category} — {name}` | — |
 
-**Design note on `vendor_delete`:** The `confirm=True` requirement mirrors
-`delete_transaction`. The failure guard on existing transactions is intentional —
-a sub who was paid once has AP history that matters for year-end reporting even
-if they never work again. The recommended path for inactive vendors is to leave
-the accounts in place (a zero-balance AP account costs nothing and is invisible
-in AP aging reports).
+**Valid `expense_category` values** (in `gnucash://vendor-guide`):
 
-**Expense category → account path mapping** (in `gnucash://vendor-guide`):
-
-| expense_category | Account created |
+| expense_category | Expense account created |
 |---|---|
-| `Subcontracts` | `Expenses:Construction — Subcontracts:{name}` |
-| `Materials` | `Expenses:Construction — Materials:{name}` |
 | `Architecture` | `Expenses:Architecture — {name}` |
 | `Structural` | `Expenses:Structural Engineering — {name}` |
 | `MEP` | `Expenses:MEP Consulting — {name}` |
 | `HVAC` | `Expenses:HVAC Engineering — {name}` |
 
+**Valid `trade` paths** are any existing `Construction:*` child account. The
+`gnucash://vendor-guide` resource lists the current trade accounts by querying
+the live book. Passing a non-existent path raises `AccountNotFoundError`.
+
+**Design note on `vendor_update`:** For professional vendors, moving their expense
+account changes where *future* invoices are coded but does not restate *historical*
+transactions. This is correct accounting behaviour. If historical restatement is
+needed, void and repost the relevant transactions.
+
+**Design note on `vendor_delete`:** The failure guard on existing AP transactions
+is a hard guard — not overridable even with `confirm=True`. A vendor paid once has
+AP history relevant to year-end reporting. The recommended path for inactive vendors
+is to leave their AP account in place.
+
 **Tests:**
 ```
-T2.2.1  vendor_add("Pacific Crest Electrical", "Subcontracts") creates:
-         Liabilities:AP — Pacific Crest Electrical
-         Expenses:Construction — Subcontracts:Pacific Crest Electrical
-T2.2.2  vendor_add with invalid expense_category raises ValueError
-T2.2.3  vendor_add is idempotent: adding same vendor twice does not duplicate accounts
-T2.2.4  vendor_list includes newly added vendor with $0.00 balance
-T2.2.5  After receive_invoice for new vendor, vendor_list shows correct AP balance
-T2.2.6  vendor_rename updates both AP and expense account names atomically
-T2.2.7  Existing transactions for renamed vendor remain valid (account GUID unchanged)
-T2.2.8  vendor_get_details returns correct paths and $0 balance for new vendor
-T2.2.9  vendor_update moves expense account to new category path
-T2.2.10 vendor_update: transactions before update still on old path; new invoice
-         uses new path (no historical restatement)
-T2.2.11 vendor_update with invalid new_expense_category raises ValueError
-T2.2.12 vendor_delete without confirm=True raises RequiresConfirmationError
-T2.2.13 vendor_delete with confirm=True on zero-balance vendor removes both accounts
-T2.2.14 vendor_delete on vendor with transaction history raises VendorHasHistoryError
-         even with confirm=True (balance check is a hard guard, not overridable)
-T2.2.15 Resource gnucash://vendor-guide is non-empty and contains expense_category table
-T2.2.16 Resource gnucash://vendors returns updated list after vendor_add (live query)
-T2.2.17 End-to-end: add vendor → receive invoice → pay invoice → AP clears to $0
+T2.2.1  vendor_add("Pacific Crest Electrical", trade="Construction:Electrical") creates
+        only Liabilities:AP — Pacific Crest Electrical; no new expense account created
+T2.2.2  vendor_add("Acme Architecture", expense_category="Architecture") creates:
+        Liabilities:AP — Acme Architecture
+        Expenses:Architecture — Acme Architecture
+T2.2.3  vendor_add with both trade and expense_category raises ValueError
+T2.2.4  vendor_add with neither trade nor expense_category raises ValueError
+T2.2.5  vendor_add with trade pointing to non-existent account raises AccountNotFoundError
+T2.2.6  vendor_add is idempotent: adding same vendor twice does not duplicate accounts
+T2.2.7  vendor_list includes newly added vendor with type, correct path, $0.00 balance
+T2.2.8  vendor_list shows trade vendor with trade path, professional with expense path
+T2.2.9  After receive_invoice for new vendor, vendor_list shows correct AP balance
+T2.2.10 vendor_rename on professional vendor updates both AP and expense account names
+T2.2.11 vendor_rename on trade vendor updates only AP account name; trade account unchanged
+T2.2.12 Existing transactions for renamed vendor remain valid (account GUID unchanged)
+T2.2.13 vendor_get_details returns type, correct paths, and $0 balance for new vendor
+T2.2.14 vendor_update on professional vendor moves expense account to new category path
+T2.2.15 vendor_update on professional vendor: transactions before update still on old path;
+        new invoice uses new path (no historical restatement)
+T2.2.16 vendor_update on trade vendor reassigns to different trade account
+T2.2.17 vendor_update with invalid expense_category raises ValueError
+T2.2.18 vendor_update with non-existent trade path raises AccountNotFoundError
+T2.2.19 vendor_delete without confirm=True raises RequiresConfirmationError
+T2.2.20 vendor_delete on trade vendor with confirm=True removes only AP account;
+        trade expense account still present with its balance intact
+T2.2.21 vendor_delete on professional vendor with confirm=True removes both AP and
+        expense accounts
+T2.2.22 vendor_delete on vendor with AP transaction history raises VendorHasHistoryError
+        even with confirm=True
+T2.2.23 Resource gnucash://vendor-guide lists current trade accounts from live book
+T2.2.24 Resource gnucash://vendors returns updated list after vendor_add (live query)
+T2.2.25 End-to-end trade: add trade vendor → receive invoice to trade account →
+        pay invoice → AP clears to $0; trade account shows spend
+T2.2.26 End-to-end replacement: add trade vendor A → invoice → pay → add trade vendor B
+        (same trade) → invoice → pay; Construction:Electrical shows combined spend
 ```
 
 ---

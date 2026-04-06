@@ -154,10 +154,10 @@ RUN apt-get update && \
 
 ### MC-6: Chart of accounts structure
 **Decision:** Model each vendor as its own AP account under `Liabilities`.
-Expense accounts under `Expenses:Construction` are populated when the GC
-delivers their pre-construction budget — not predetermined. Professional
-fees (Architecture, Structural, MEP) retain their own fixed expense accounts
-because those contracts are already signed with known scopes.
+Trade expense accounts under `Expenses:Construction` are one-per-trade, shared
+across all vendors who perform that trade. Professional fee vendors (architects,
+engineers) get their own dedicated expense accounts because their contracts are
+individually named and scoped.
 
 **Rationale:** The original design pre-mapped Construction expense accounts to
 the prior GC's ROM Labor/Subcontracts/Materials structure. That bid was not accepted.
@@ -165,6 +165,34 @@ The new GC will deliver their own line-item breakdown in pre-construction, and t
 structure — whatever it is — becomes the expense account hierarchy and the GnuCash
 budget amounts simultaneously. Using GnuCash's native budget feature means the
 budget is live data in the book, not hardcoded Python constants.
+
+**Two vendor types:**
+
+| Type | AP account | Expense account | Example |
+|---|---|---|---|
+| Trade | `Liabilities:AP — {vendor}` | Existing `Construction:{trade}` shared account | Pacific Crest Electrical → `Construction:Electrical` |
+| Professional | `Liabilities:AP — {vendor}` | New `Expenses:{category} — {vendor}` | Acme Architecture → `Architecture — Acme Architecture` |
+
+Trade vendors bill to a shared trade expense account. Multiple vendors can bill to
+the same trade account over the project lifetime — vendor replacement mid-trade or
+a GC sub passing through an invoice are handled identically. The trade expense
+account accumulates total spend for that trade regardless of which vendor performed
+the work. `vendor_add` with `trade=` uses an existing account; no new expense
+account is created.
+
+Professional fee vendors each get their own expense account because their contracts
+are individually named, individually budgeted, and individually tracked for AP aging.
+
+**Permits and government fees:** Permits are prepaid — no AP relationship with the
+jurisdiction. Post directly against `Expenses:Permits and Fees` using
+`post_transaction`. A permit expediter (a hired consultant) is a professional vendor
+with their own AP account. The jurisdiction itself is never a vendor.
+
+**GC pass-through invoices:** When the GC subs out a trade and passes the invoice
+through, the GC is still the vendor (`AP — [GC]`) and the expense splits to the
+relevant trade account(s). For single-line pass-throughs, `receive_invoice` works.
+For multi-line GC invoices spanning several trades, use `post_transaction` with
+explicit splits.
 
 **Fixed accounts (known now):**
 ```
@@ -181,12 +209,12 @@ Equity
 Income
   Interest Income — Project Account
 Expenses
-  Architecture — Acme Architecture
+  Architecture — Acme Architecture       ← professional; dedicated per-vendor account
   Structural Engineering — Peak Structural
   MEP Consulting — Meridian MEP
   HVAC Engineering — Summit HVAC
-  Permits and Fees
-  Construction         ← placeholder parent; children created from GC budget
+  Permits and Fees                        ← direct payment; no AP vendor
+  Construction         ← trade parent; children created from GC budget
   Change Orders        ← ECO tracking (see Phase 4)
 ```
 
@@ -195,7 +223,7 @@ the GC delivers their budget. Each GC line item becomes a sub-account:
 ```
   Construction:Demo
   Construction:Framing
-  Construction:Electrical
+  Construction:Electrical        ← shared; any electrical vendor bills here
   Construction:Plumbing
   Construction:HVAC
   Construction:Tile
