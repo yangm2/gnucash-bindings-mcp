@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Spike B — VirtioFS sparsebundle volume sharing test (macOS host)
 
-set -euo pipefail
+set -x -euo pipefail
 
 SPARSE=~/spike-test.sparsebundle
 MOUNT=/Volumes/GnuCash-Spike
@@ -15,7 +15,7 @@ echo "hello from host" > "$MOUNT/test.txt"
 # Run container with volume mount (adjust container CLI to your runtime)
 container run --rm \
   --volume "$MOUNT:/data" \
-  ubuntu:24.04 \
+  ubuntu:26.04 \
   bash -c "cat /data/test.txt && echo 'written from container' >> /data/test.txt"
 
 # Verify on host:

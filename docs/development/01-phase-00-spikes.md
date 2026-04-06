@@ -147,6 +147,10 @@ cat /Volumes/GnuCash-Spike/test.txt
 - File ownership and permissions are sane (no UID mismatch blocking writes)
 - No VirtioFS errors in container dmesg
 
+**Result: PASS.** Host-written content and container-appended content both visible
+on host after container exit. VirtioFS read-write semantics confirmed on Apple
+Silicon. No UID or permission issues observed.
+
 **Fail path:** In order:
 1. Copy-in / copy-out: container receives a file copy on start, writes back on exit
 2. SSHFS from container back to macOS host via `Remote Login`
@@ -505,7 +509,7 @@ before Phase 1 begins. Record results in `SPIKE_RESULTS.md`.
 | Spike | Status | Fallback chosen (if FAIL) |
 |---|---|---|
 | A — Python bindings | ✅ PASS (via Dockerfile.spike-g) | n/a |
-| B — VirtioFS | ☐ | |
+| B — VirtioFS | ✅ PASS — host↔container read/write confirmed via sparsebundle VirtioFS mount | n/a |
 | C — Schema compatibility | ☐ | |
 | D — Read-only enforcement | ☐ | |
 | E — APFS snapshots | ☐ | |
