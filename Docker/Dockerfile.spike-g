@@ -1,6 +1,4 @@
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 RUN apt-get update && \
     apt-get install -y software-properties-common && \
-    add-apt-repository ppa:gnucash/ppa && \
-    apt-get update && \
     apt-get install -y gnucash python3-gnucash

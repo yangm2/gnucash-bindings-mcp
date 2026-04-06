@@ -65,33 +65,55 @@ with tempfile.TemporaryDirectory() as d:
     print("PASS: reopen")
 
 # Test 5: lock detection
+# Phase 1: create and close cleanly so the file exists on disk
 with tempfile.TemporaryDirectory() as d:
     path = os.path.join(d, "test_lock.gnucash")
-    with Session(f"xml://{path}", SessionOpenMode.SESSION_NEW_STORE) as s1:
-        try:
-            s2 = Session(f"xml://{path}", SessionOpenMode.SESSION_NORMAL_OPEN)
-            print("FAIL: expected ERR_BACKEND_LOCKED")
-        except GnuCashBackendException as e:
-            assert ERR_BACKEND_LOCKED in e.errors
-            print("PASS: lock detection via GnuCashBackendException")
+    with Session(f"xml://{path}", SessionOpenMode.SESSION_NEW_STORE) as s:
+        s.book.get_root_account()  # required: fully initializes XML book structure
+    # Phase 2: reopen and hold — this is the locked session
+    s1 = Session(f"xml://{path}", SessionOpenMode.SESSION_NORMAL_OPEN)
+    try:
+        s2 = Session(f"xml://{path}", SessionOpenMode.SESSION_NORMAL_OPEN)
+        s2.end()
+        print("FAIL: expected ERR_BACKEND_LOCKED")
+    except GnuCashBackendException as e:
+        assert ERR_BACKEND_LOCKED in e.errors
+        print("PASS: lock detection via GnuCashBackendException")
+    finally:
+        s1.end()
 ```
 
+**Findings (validated on Dockerfile.spike-g / Ubuntu 26.04):**
+
+1. **Early save must precede all mutations.** Call `session.save()` immediately after
+   `SESSION_NEW_STORE` and before accessing `session.book` for any write. Skipping
+   this causes subtle corruption (per GnuCash official example scripts and confirmed
+   by spike).
+
+2. **`book.get_root_account()` is required to fully initialize the XML book.**
+   Without calling it at least once during a `SESSION_NEW_STORE` session, GnuCash
+   does not write a valid root account element into the XML file. A subsequent
+   `SESSION_NORMAL_OPEN` then fails with `ERR_FILEIO_FILE_NOT_FOUND` (not a lock
+   error) because the file is either absent or malformed. Always call
+   `session.book.get_root_account()` in new-book sessions before `save()` + `end()`.
+
+3. **Lock detection two-phase pattern required.** `SESSION_NORMAL_OPEN` checks for
+   file existence before checking the lock. To test lock detection, the book must be
+   fully created and closed in a first session, then reopened and held in a second
+   session before attempting a third. Testing lock detection from inside the creating
+   `SESSION_NEW_STORE` session always fails with `ERR_FILEIO_FILE_NOT_FOUND` because
+   the file is not yet on disk.
+
 **Pass criteria:**
-- `add-apt-repository ppa:gnucash/ppa` succeeds in container (network + GPG key)
-- `apt-get install python3-gnucash` installs without errors
 - `import gnucash` succeeds without error
 - `Session(path, SessionOpenMode.SESSION_NEW_STORE)` creates a valid new book
 - `book.get_root_account()` returns an Account object
 - Early-save pattern (save before mutations) completes without error
 - Session save/end/reopen cycle completes without error
 - Lock detection raises `GnuCashBackendException` with `ERR_BACKEND_LOCKED`
-- Record installed GnuCash version in `SPIKE_RESULTS.md` for Spike C planning
 
-**Fail path:** If PPA installation fails in container:
-1. Install from Noble universe directly (no PPA): `apt-get install python3-gnucash`
-   gives GnuCash 5.5 — functional but further behind macOS 5.15; Spike C becomes
-   more important
-2. Fall back to build from source at 5.14 or 5.15 (~30 min build, original plan)
+**Result: PASS on Dockerfile.spike-g (Ubuntu 26.04, GnuCash 5.14).** Dockerfile.spike-a
+(Ubuntu 24.04 PPA) skipped — spike-g provides equivalent coverage with a newer base.
 
 ---
 
@@ -338,39 +360,25 @@ whether 26.04 is ready to adopt before or during Phase 1.
 **G1 — Universe package version:** What version of GnuCash ships in Ubuntu 26.04
 universe (without the PPA)?
 
-```bash
-# Run against a 26.04 container once released
-apt-cache show gnucash | grep Version
-```
+**Result: GnuCash 5.14** ships in Ubuntu 26.04 universe with no PPA required.
+Python version: **3.14.3**. `python3-gnucash` installs cleanly from universe.
 
-**G2 — PPA availability:** Has `ppa:gnucash/ppa` published arm64 packages for
-Ubuntu 26.04 (codename "oracular" or next LTS)?
+**G2 — PPA availability:** Not needed — universe provides GnuCash 5.14 directly.
 
-```bash
-# Check Launchpad PPA build status
-curl -s "https://launchpad.net/~gnucash/+archive/ubuntu/ppa/+packages" \
-  | grep -i "26\.\|oracular\|next-lts-codename"
-```
+**G3 — Migration smoke test:** Spike A tests (session create/save/end, reopen,
+lock detection) all **PASS** on Dockerfile.spike-g (Ubuntu 26.04, GnuCash 5.14).
+See Spike A findings above for `get_root_account()` and early-save requirements
+discovered during this run.
 
-> **Note:** As of April 2026, no PPAs for 26.04 exist yet. Do not block Phase 1 on
-> this spike — run it in parallel once 26.04 is released.
+**Decision: Use Ubuntu 26.04 as the container base. Drop PPA dependency.**
 
-**G3 — Migration smoke test:** If a 26.04 image with a working GnuCash package is
-available, re-run Spike A and Spike C tests against it:
-- `import gnucash` succeeds inside a 26.04 Apple Container
-- Cross-version schema compatibility (container GnuCash version vs macOS 5.15)
-
-**Decision matrix:**
-
-| Scenario | Action |
+| Scenario | Outcome |
 |---|---|
-| PPA publishes for 26.04, version ≥ 5.14 | Update `Dockerfile` to `FROM ubuntu:26.04`, re-run Spike A/C |
-| Universe ships GnuCash ≥ 5.14 (PPA not needed) | Drop PPA dependency, update `Dockerfile` |
-| Neither available at Phase 1 start | Stay on 24.04; revisit after 26.04 PPA publishes |
-| GnuCash version < 5.14 on 26.04 | Stay on 24.04 indefinitely; document in `SPIKE_RESULTS.md` |
+| Universe ships GnuCash ≥ 5.14 (PPA not needed) | **✅ Applies** — use `FROM ubuntu:26.04`, no PPA |
 
-**Note:** If the base image changes to 26.04, Spike C must be re-validated against
-the new container GnuCash version and the macOS 5.15 book file.
+`Dockerfile` base image: `FROM ubuntu:26.04`. `apt-get install python3-gnucash`
+installs GnuCash 5.14 directly. Spike C must still be run to validate
+cross-version schema compatibility (5.14 container vs macOS 5.15 book file).
 
 ---
 
@@ -496,13 +504,13 @@ before Phase 1 begins. Record results in `SPIKE_RESULTS.md`.
 
 | Spike | Status | Fallback chosen (if FAIL) |
 |---|---|---|
-| A — Python bindings | ☐ | |
+| A — Python bindings | ✅ PASS (via Dockerfile.spike-g) | n/a |
 | B — VirtioFS | ☐ | |
 | C — Schema compatibility | ☐ | |
 | D — Read-only enforcement | ☐ | |
 | E — APFS snapshots | ☐ | |
 | F — HTTP transport + CoWork bridge | ☐ | |
-| G — Ubuntu 26.04 evaluation | ☐ (non-blocking; run after 26.04 release) | |
+| G — Ubuntu 26.04 evaluation | ✅ PASS — GnuCash 5.14 from universe, Python 3.14.3, no PPA needed | n/a |
 | H — PDF extraction from directory mount | ☐ (non-blocking; run before Phase 6 PDF workflows) | |
 
 ---

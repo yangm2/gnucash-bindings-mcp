@@ -135,13 +135,29 @@ except GnuCashBackendException as e:
 then `end()` automatically. The MCP session manager wraps this to ensure the
 WAL `committed_at` timestamp is set before `end()` is called.
 
-**Early-save pattern for new books:**
+**Early-save and root-account initialization for new books:**
 
-`new_book_with_opening_balances.py` (official GnuCash example script) contains
-this comment at the point where it calls `save()` on a freshly-opened new book,
-before making any changes:
+Two requirements confirmed by spike testing (Spike A on Ubuntu 26.04, GnuCash 5.14):
 
-> *"we discovered that if we didn't have this save early on, there would be trouble later"*
+1. `session.save()` must be called immediately after `SESSION_NEW_STORE`, before
+   any mutations. `new_book_with_opening_balances.py` (official GnuCash example)
+   documents this:
+   > *"we discovered that if we didn't have this save early on, there would be trouble later"*
+
+2. `session.book.get_root_account()` must be called at least once during a
+   `SESSION_NEW_STORE` session. Without it, GnuCash does not write the root account
+   element into the XML file. A subsequent `SESSION_NORMAL_OPEN` then raises
+   `ERR_FILEIO_FILE_NOT_FOUND` (file absent or malformed) rather than opening cleanly.
+
+The correct new-book creation sequence is:
+```python
+session = Session(f"xml://{path}", SessionOpenMode.SESSION_NEW_STORE)
+session.save()                       # early save — before any mutations
+session.book.get_root_account()      # initializes XML book structure
+# ... mutations ...
+session.save()
+session.end()
+```
 
 The session manager must replicate this for all new-book creation:
 
