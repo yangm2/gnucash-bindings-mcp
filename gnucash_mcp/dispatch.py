@@ -11,6 +11,12 @@ HANDLERS = {
     "get_audit_log":        read.get_audit_log,     # reads WAL, no GnuCash session
     "__unlock_ledger__":    read.unlock_ledger,
     "gnucash://vendors":    read.vendors_resource,  # dynamic resource
+    # Tier 1 — write
+    "post_transaction":     write.post_transaction,
+    "fund_project":         write.fund_project,
+    "receive_invoice":      write.receive_invoice,
+    "pay_invoice":          write.pay_invoice,
+    "post_interest":        write.post_interest,
 }
 
 
@@ -35,8 +41,8 @@ def dispatch(request: dict) -> dict:
         try:
             result = handler(**args)
             return success_response(req_id, result)
-        except Exception as e:
-            return error_response(req_id, -32603, str(e))
+        except Exception as exc:
+            return error_response(req_id, -32603, str(exc))
 
     if method == "resources/read":
         uri = request.get("params", {}).get("uri")

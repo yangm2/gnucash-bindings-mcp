@@ -100,14 +100,12 @@ def gnc_decimal(amount_str: str) -> GncNumeric:
 
     sign, digits, exponent = d.as_tuple()
     # exponent is negative for fractional parts: 15000.00 → exponent=-2
+    # int() and int(d * N) both preserve sign, so no manual sign flip needed.
     if exponent >= 0:
         numerator = int(d)
         denominator = 1
     else:
         denominator = 10 ** (-exponent)
         numerator = int(d * denominator)
-
-    if sign:
-        numerator = -numerator
 
     return GncNumeric(numerator, denominator)
