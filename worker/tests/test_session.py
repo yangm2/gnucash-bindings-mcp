@@ -5,9 +5,16 @@ from pathlib import Path
 import pytest
 from gnucash import GnuCashBackendException
 
+import datetime
+import tempfile
+
+from hypothesis import given, settings
+from hypothesis.strategies import dates
+
 from gnucash_mcp.session import (
     open_session, close_session, book_session, get_account,
-    gnc_decimal, AccountNotFoundError
+    gnc_decimal, set_txn_isodate, get_txn_isodate, account_balance_float,
+    clear_stale_lock, AccountNotFoundError
 )
 
 
@@ -54,11 +61,13 @@ class TestStaleFileLocking:
         session = open_session(test_book_path, is_new=True)
         close_session(session)
 
-        # Create stale .LCK file
+        # Create stale .LCK file (simulates crash before session.end())
         lck_file = Path(str(test_book_path) + ".LCK")
         lck_file.write_text("stale")
 
-        # Open should clear it and succeed
+        # clear_stale_lock() is called at process startup (via __main__.py)
+        # before any open_session(); mimic that here
+        clear_stale_lock(test_book_path)
         session = open_session(test_book_path, is_new=False)
         try:
             # Lock should be cleared before this point
@@ -180,6 +189,136 @@ class TestGnucashDecimal:
         """gnc_decimal raises ValueError for invalid input"""
         with pytest.raises(ValueError):
             gnc_decimal("not-a-number")
+
+
+def _make_complete_txn(session, date_str):
+    """Create a minimal complete (balanced, committed) transaction for date testing.
+
+    GnuCash requires splits before CommitEdit() for the date to persist —
+    a splitless transaction resets to epoch on commit.
+    """
+    from gnucash import Transaction, Split
+    txn = Transaction(session.book)
+    txn.BeginEdit()
+    set_txn_isodate(txn, date_str)
+    txn.SetDescription("date test")
+    usd = session.book.get_table().lookup("CURRENCY", "USD")
+    txn.SetCurrency(usd)
+
+    checking = get_account(session.book, "Assets:Project Checking")
+    equity = get_account(session.book, "Equity:Owner Capital")
+    for acc, amount_str in [(checking, "1.00"), (equity, "-1.00")]:
+        s = Split(session.book)
+        s.SetParent(txn)
+        s.SetAccount(acc)
+        amt = gnc_decimal(amount_str)
+        s.SetAmount(amt)
+        s.SetValue(amt)
+
+    txn.CommitEdit()
+    return txn
+
+
+class TestTxnIsodate:
+    """set_txn_isodate / get_txn_isodate — encode (day, month, year) argument order."""
+
+    def test_set_get_roundtrip(self, initialized_book):
+        """set_txn_isodate then get_txn_isodate returns the same date string"""
+        with book_session(initialized_book) as session:
+            txn = _make_complete_txn(session, "2025-03-15")
+            assert get_txn_isodate(txn) == "2025-03-15"
+
+    def test_year_not_transposed_as_day(self, initialized_book):
+        """Regression guard: year must not appear in the day position"""
+        with book_session(initialized_book) as session:
+            txn = _make_complete_txn(session, "2025-01-05")
+            d = txn.GetDate()
+            # If year/day were swapped, d.year would be 5 and d.day would be clamped
+            assert d.year == 2025
+            assert d.day == 5
+
+
+@given(dates(min_value=datetime.date(1970, 1, 1),
+             max_value=datetime.date(2099, 12, 31)))
+@settings(max_examples=50)
+def test_txn_isodate_roundtrip_property(d):
+    """Property: set_txn_isodate → get_txn_isodate round-trips any date in the safe range.
+
+    Catches argument-order transposition: if day/year were swapped, GetDate().year
+    would be wrong for any date where day != year (i.e. almost every date).
+
+    Self-contained (no pytest fixtures) so Hypothesis controls the full test lifecycle.
+    """
+    from gnucash import Transaction, Split, Account
+    import gnucash.gnucash_core_c as gc
+
+    date_str = d.isoformat()
+    with tempfile.TemporaryDirectory() as tmp:
+        book_path = Path(tmp) / "prop_test.gnucash"
+        with book_session(book_path, is_new=True) as session:
+            book = session.book
+            root = book.get_root_account()
+            usd = book.get_table().lookup("CURRENCY", "USD")
+
+            def make_acc(parent, name, acct_type):
+                acc = Account(book)
+                acc.SetName(name)
+                acc.SetType(acct_type)
+                acc.SetCommodity(usd)
+                parent.append_child(acc)
+                return acc
+
+            checking = make_acc(root, "Assets", gc.ACCT_TYPE_ASSET)
+            equity = make_acc(root, "Equity", gc.ACCT_TYPE_EQUITY)
+
+            txn = Transaction(book)
+            txn.BeginEdit()
+            set_txn_isodate(txn, date_str)
+            txn.SetDescription("prop test")
+            txn.SetCurrency(usd)
+            for acc, amount_str in [(checking, "1.00"), (equity, "-1.00")]:
+                s = Split(book)
+                s.SetParent(txn)
+                s.SetAccount(acc)
+                amt = gnc_decimal(amount_str)
+                s.SetAmount(amt)
+                s.SetValue(amt)
+            txn.CommitEdit()
+
+            assert get_txn_isodate(txn) == date_str
+
+
+class TestAccountBalanceFloat:
+    """account_balance_float() wrapper — encodes AP credit/negate convention."""
+
+    def test_asset_account_balance_positive(self, initialized_book):
+        """account_balance_float returns positive value for asset account with debit balance"""
+        from gnucash_mcp.tools.write import fund_project
+        import os
+        os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
+        fund_project("2025-01-01", "10000.00", "test")
+
+        with book_session(initialized_book) as session:
+            acc = get_account(session.book, "Assets:Project Checking")
+            bal = account_balance_float(acc)
+            assert bal == 10000.0
+
+    def test_liability_account_negate_true(self, initialized_book):
+        """account_balance_float(negate=True) returns positive owed amount for AP account"""
+        from gnucash_mcp.tools.write import receive_invoice
+        import os
+        os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
+        receive_invoice(
+            "2025-01-01", "Acme Architecture", "AAI-001",
+            "5000.00", "Expenses:Architecture — Acme Architecture"
+        )
+
+        with book_session(initialized_book) as session:
+            acc = get_account(session.book, "Liabilities:AP — Acme Architecture")
+            raw = account_balance_float(acc, negate=False)
+            negated = account_balance_float(acc, negate=True)
+            assert raw == -5000.0       # credit balance is negative in GnuCash
+            assert negated == 5000.0    # negate=True gives the conventional positive amount owed
 
 
 class TestBookCreation:

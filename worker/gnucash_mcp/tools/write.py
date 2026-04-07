@@ -11,13 +11,12 @@ Book path from GNUCASH_BOOK_PATH env var.
 """
 
 import os
-from datetime import date as Date
 from decimal import Decimal
 from pathlib import Path
 
 from gnucash import Transaction, Split
 
-from gnucash_mcp.session import book_session, get_account, gnc_decimal
+from gnucash_mcp.session import book_session, get_account, gnc_decimal, set_txn_isodate
 from gnucash_mcp import wal
 
 
@@ -29,16 +28,11 @@ def _book_path() -> Path:
     return Path(os.environ.get("GNUCASH_BOOK_PATH", "/data/project.gnucash"))
 
 
-def _parse_date(date_str: str):
-    return Date.fromisoformat(date_str)
-
-
 def _post_transaction(book, date_str: str, description: str, splits: list):
     """Create and commit a balanced transaction. Returns (txn, guid_str)."""
     txn = Transaction(book)
     txn.BeginEdit()
-    d = _parse_date(date_str)
-    txn.SetDate(d.day, d.month, d.year)
+    set_txn_isodate(txn, date_str)
     txn.SetDescription(description)
 
     usd = book.get_table().lookup("CURRENCY", "USD")

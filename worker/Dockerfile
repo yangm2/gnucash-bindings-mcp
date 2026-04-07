@@ -10,7 +10,7 @@
 # Ubuntu 26.04 with GnuCash 5.14 from universe (no PPA required)
 
 # ── base ─────────────────────────────────────────────────────────────────────
-# GnuCash + Python bindings + gnucash_mcp package. No scripts, no dev tools.
+# GnuCash + Python bindings + uv-managed venv + gnucash_mcp package.
 FROM ubuntu:26.04 AS base
 
 RUN apt-get update && \
@@ -18,12 +18,25 @@ RUN apt-get update && \
       gnucash \
       python3-gnucash \
       python3-pip \
-      python3-dev && \
+      python3-dev \
+      curl \
+      ca-certificates && \
     rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Create a venv that can see apt-installed system packages (python3-gnucash)
+RUN uv venv --system-site-packages /opt/venv
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
 
 COPY pyproject.toml /src/pyproject.toml
 COPY gnucash_mcp/ /src/gnucash_mcp/
-RUN pip3 install --break-system-packages -e /src
+
+# uv sync installs the project and its dependencies; creates uv.lock if absent
+RUN uv sync --project /src --no-dev
 
 WORKDIR /data
 ENV GNUCASH_BOOK_PATH=/data/project.gnucash
@@ -37,19 +50,12 @@ FROM base AS prod
 COPY scripts/ /src/scripts/
 
 # ── dev ──────────────────────────────────────────────────────────────────────
-# Adds uv, ruff, and ty for local development and linting.
+# Adds ruff, pyright, and dev dependencies (pytest, hypothesis, etc.).
 FROM base AS dev
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl ca-certificates && \
-    rm -rf /var/lib/apt/lists/* && \
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-
-ENV PATH="/root/.local/bin:${PATH}"
 
 RUN uv tool install ruff && \
     uv tool install pyright && \
-    pip3 install --break-system-packages pytest>=7.0
+    uv sync --project /src
 
 # ── default ───────────────────────────────────────────────────────────────────
 # `container build worker/` with no --target produces the prod image.

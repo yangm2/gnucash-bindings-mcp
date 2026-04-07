@@ -551,21 +551,38 @@ The correct call is:
 txn.SetDate(d.day, d.month, d.year)
 ```
 
-#### `.LCK` files use OS-level `flock()`, not PID content
+#### `.LCK` files: GnuCash checks existence, not flock state
 
-The M1.4 design assumed `.LCK` files contain PID information that can be used to
-detect stale locks. In practice, GnuCash `.LCK` files on Linux/macOS are **empty**.
-GnuCash uses `flock()` on the `.LCK` inode to distinguish a live lock from a stale one.
+The M1.4 design assumed `.LCK` files contain PID content that can be parsed to
+distinguish stale from live locks. Two assumptions turned out to be wrong:
 
-Consequence: deleting the `.LCK` file in `open_session` for all non-new opens
-(as the original design showed) defeats live lock detection. A second process can
-create a new `.LCK` inode, acquire flock on it with no conflict, and open the book
-concurrently — the `test_second_open_on_locked_book_raises_error` test would pass
-in isolation but fail under the actual scenario.
+1. **`.LCK` files are empty.** GnuCash on Linux/macOS writes an empty `.LCK` file
+   and uses OS-level `flock()` on that inode for locking — there is no PID or
+   timestamp to parse.
 
-**Fix:** Remove the unconditional `.LCK` deletion. Let GnuCash's own flock mechanism
-handle live vs. stale detection. A truly stale `.LCK` (no process holds flock on it)
-is handled by GnuCash internally when it attempts `SESSION_NORMAL_OPEN`.
+2. **GnuCash does not internally detect stale flocks.** It raises `ERR_BACKEND_LOCKED`
+   whenever a `.LCK` file exists, regardless of whether any process holds flock on it.
+   "Let GnuCash handle stale lock detection" does not work.
+
+Consequence of unconditional `.LCK` deletion in `open_session`: deleting the file
+and retrying creates a new inode with no live flock conflict — so a second open
+succeeds even when session 1 is still running, defeating cross-process lock protection.
+
+**Fix:** Do not delete `.LCK` inside `open_session`. Instead, expose a separate
+`clear_stale_lock(path)` utility and call it **once at process startup** in `__main__.py`,
+before any session is opened:
+
+```python
+# __main__.py
+book_path = Path(os.environ.get("GNUCASH_BOOK_PATH", "/data/project.gnucash"))
+clear_stale_lock(book_path)   # called once; any .LCK at startup is by definition stale
+```
+
+This works correctly because the container is a **one-shot dispatcher**: when a new
+process starts, all flock locks from prior processes have been released by the OS. Any
+`.LCK` file on the mounted volume belongs to a dead process and is unconditionally safe
+to remove. Clearing at startup (not inside `open_session`) preserves live-lock detection
+for any second open attempted within the same process run.
 
 #### GUID lookup via `xaccTransLookup` fails with SWIG type mismatch
 

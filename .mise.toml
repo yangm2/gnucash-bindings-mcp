@@ -87,11 +87,12 @@ depends = ["build-dev"]
 run = """
 container run --rm \
   -v {{config_root}}/.test-data:/data:rw \
-  -v ${WORKER_DIR}:/src:ro \
+  -v ${WORKER_DIR}/gnucash_mcp:/src/gnucash_mcp:ro \
+  -v ${WORKER_DIR}/tests:/src/tests:ro \
   -e GNUCASH_BOOK_PATH=/data/project.gnucash \
   --entrypoint bash \
   gnucash-mcp:dev \
-  -c "cd /src && python3 -m pytest tests/ -v"
+  -c "cd /src && uv run --active --frozen pytest tests/ -v"
 """
 
 [tasks.clean]

@@ -7,7 +7,7 @@ suitable for JSON serialization.  Book path from GNUCASH_BOOK_PATH env var.
 import os
 from pathlib import Path
 
-from gnucash_mcp.session import book_session, get_account, AccountNotFoundError
+from gnucash_mcp.session import book_session, get_account, get_txn_isodate, account_balance_float, AccountNotFoundError
 from gnucash_mcp import wal
 
 
@@ -56,7 +56,7 @@ def _txn_to_dict(txn) -> dict:
     splits = [_split_to_dict(s) for s in txn.GetSplitList()]
     return {
         "guid": txn.GetGUID().to_string(),
-        "date": txn.GetDate().strftime("%Y-%m-%d") if txn.GetDate() else None,
+        "date": get_txn_isodate(txn) if txn.GetDate() else None,
         "description": txn.GetDescription(),
         "splits": splits,
         "mcp_wal_id": txn.GetSlot("mcp-wal-id") if hasattr(txn, "GetSlot") else None,
@@ -113,7 +113,7 @@ def list_transactions(account_path: str, limit: int = 20) -> list:
             txn = split.GetParent()
             result.append({
                 "guid": txn.GetGUID().to_string(),
-                "date": txn.GetDate().strftime("%Y-%m-%d") if txn.GetDate() else None,
+                "date": get_txn_isodate(txn) if txn.GetDate() else None,
                 "description": txn.GetDescription(),
                 "amount": _balance_str(split.GetAmount()),
                 "memo": split.GetMemo(),
@@ -214,12 +214,9 @@ def vendors_resource() -> list:
         vendors = []
         for acc in liabilities.get_children():
             if acc.name.startswith("AP — "):
-                # AP accounts carry credit balances (negative in GnuCash).
-                # Negate to show the amount owed as a positive number.
-                raw = acc.GetBalance().to_double()
                 vendors.append({
                     "name": acc.name[5:],  # strip "AP — " prefix
                     "account": acc.name,
-                    "balance": f"{-raw:.2f}",
+                    "balance": f"{account_balance_float(acc, negate=True):.2f}",
                 })
         return vendors

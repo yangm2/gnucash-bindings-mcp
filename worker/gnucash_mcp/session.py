@@ -4,12 +4,16 @@ Public API:
   open_session(path, is_new=False) -> Session
   close_session(session) -> None
   book_session(path, is_new=False) -> contextmanager[Session]
+  clear_stale_lock(path) -> None
   get_account(book, full_name) -> Account          raises AccountNotFoundError
   gnc_decimal(amount_str) -> GncNumeric
+  set_txn_isodate(txn, date_str) -> None
+  get_txn_isodate(txn) -> str
+  account_balance_float(acc, negate=False) -> float
 """
 
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import date as Date, datetime
 from decimal import Decimal, InvalidOperation
 import glob
 from pathlib import Path
@@ -36,6 +40,21 @@ def _purge_same_second_backup(path: Path) -> None:
             Path(f).unlink()
         except OSError:
             pass
+
+
+def clear_stale_lock(path: Path) -> None:
+    """Remove a .LCK file left by a prior crash.
+
+    flock() locks are process-scoped — released when the process dies.  Any .LCK
+    present at process startup belongs to a dead process and is safe to remove.
+    Call once at startup, before the first open_session(), to preserve live-lock
+    detection within the current process.
+    """
+    lck = Path(str(path) + ".LCK")
+    try:
+        lck.unlink()
+    except FileNotFoundError:
+        pass
 
 
 def open_session(path: Path, is_new: bool = False) -> Session:
@@ -102,6 +121,37 @@ def get_account(book, full_name: str):
             )
         current = children[part]
     return current
+
+
+def set_txn_isodate(txn, date_str: str) -> None:
+    """Set a transaction's date from an ISO-8601 string (YYYY-MM-DD).
+
+    GnuCash's xaccTransSetDate signature is (day, month, year) — the opposite
+    of the conventional (year, month, day) order.  This wrapper encodes that
+    knowledge so callers never touch the raw argument order.
+    """
+    d = Date.fromisoformat(date_str)
+    txn.SetDate(d.day, d.month, d.year)
+
+
+def get_txn_isodate(txn) -> str:
+    """Return a transaction's date as an ISO-8601 string (YYYY-MM-DD).
+
+    Pairs with set_txn_isodate; avoids scattering strftime("%Y-%m-%d") calls
+    across the codebase.
+    """
+    return txn.GetDate().strftime("%Y-%m-%d")
+
+
+def account_balance_float(acc, negate: bool = False) -> float:
+    """Return an account's balance as a float.
+
+    Pass negate=True for liability/AP accounts: GnuCash stores credit-normal
+    balances as negative values; negating gives the conventional positive amount
+    owed.
+    """
+    raw = acc.GetBalance().to_double()
+    return -raw if negate else raw
 
 
 def gnc_decimal(amount_str: str) -> GncNumeric:
