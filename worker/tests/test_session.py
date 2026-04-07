@@ -25,6 +25,7 @@ class TestSessionLifecycle:
 
     def test_open_session_calls_early_save(self, test_book_path):
         """T1.4.2: open_session(path, is_new=True) calls save() before returning"""
+        assert not test_book_path.exists(), "Book should not exist before open_session"
         session = open_session(test_book_path, is_new=True)
         try:
             # For a new book, save() should have been called, so file exists
@@ -142,34 +143,34 @@ class TestGnucashDecimal:
     def test_gnc_decimal_simple(self):
         """T1.4.9: gnc_decimal("15000.00") round-trips without precision loss"""
         result = gnc_decimal("15000.00")
-        assert result.num == 1500000
-        assert result.denom == 100
+        assert result.num() == 1500000
+        assert result.denom() == 100
         assert float(result.to_double()) == 15000.00
 
     def test_gnc_decimal_fractional(self):
         """gnc_decimal handles fractional amounts correctly"""
         result = gnc_decimal("123.45")
-        assert result.num == 12345
-        assert result.denom == 100
+        assert result.num() == 12345
+        assert result.denom() == 100
         assert abs(float(result.to_double()) - 123.45) < 0.001
 
     def test_gnc_decimal_whole_number(self):
         """gnc_decimal handles whole numbers"""
         result = gnc_decimal("1000")
-        assert result.num == 1000
-        assert result.denom == 1
+        assert result.num() == 1000
+        assert result.denom() == 1
 
     def test_gnc_decimal_small_amount(self):
         """gnc_decimal handles very small amounts"""
         result = gnc_decimal("0.01")
-        assert result.num == 1
-        assert result.denom == 100
+        assert result.num() == 1
+        assert result.denom() == 100
 
     def test_gnc_decimal_negative(self):
         """gnc_decimal handles negative amounts correctly"""
         result = gnc_decimal("-500.50")
-        assert result.num == -50050
-        assert result.denom == 100
+        assert result.num() == -50050
+        assert result.denom() == 100
         assert float(result.to_double()) < 0
 
     def test_gnc_decimal_invalid_raises_error(self):

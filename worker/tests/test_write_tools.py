@@ -110,7 +110,7 @@ class TestPayInvoice:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         # Fund project first
-        fund_project("2024-12-01", "50000.00", "Initial")
+        fund_project("2025-12-01", "50000.00", "Initial")
 
         # Receive invoice
         receive_invoice(
@@ -226,7 +226,7 @@ class TestCompleteInvoiceWorkflow:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         # Fund project
-        fund_project("2024-12-01", "100000.00")
+        fund_project("2025-12-01", "100000.00")
 
         # Receive invoice
         receive_invoice(
@@ -250,7 +250,7 @@ class TestCompleteInvoiceWorkflow:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         # Fund project
-        fund_project("2024-12-01", "50000.00")
+        fund_project("2025-12-01", "50000.00")
 
         # Receive invoice (create AP account first if not in fixture)
         receive_invoice(
@@ -272,7 +272,7 @@ class TestCompleteInvoiceWorkflow:
         wal.init(test_wal_path)
 
         # Fund project with enough for all invoices
-        fund_project("2024-12-01", "100000.00")
+        fund_project("2025-12-01", "100000.00")
 
         # All known invoices from project documents
         invoices = [

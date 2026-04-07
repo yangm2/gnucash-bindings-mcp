@@ -65,6 +65,8 @@ def initialized_book(test_book_path, test_wal_path):
         liabilities = create_account(root, "Liabilities", gc.ACCT_TYPE_LIABILITY)
         create_account(liabilities, "AP — Acme Architecture", gc.ACCT_TYPE_PAYABLE)
         create_account(liabilities, "AP — Peak Structural", gc.ACCT_TYPE_PAYABLE)
+        create_account(liabilities, "AP — Meridian MEP", gc.ACCT_TYPE_PAYABLE)
+        create_account(liabilities, "AP — Summit HVAC", gc.ACCT_TYPE_PAYABLE)
 
         equity = create_account(root, "Equity", gc.ACCT_TYPE_EQUITY)
         create_account(equity, "Owner Capital", gc.ACCT_TYPE_EQUITY)
@@ -76,6 +78,8 @@ def initialized_book(test_book_path, test_wal_path):
         create_account(expenses, "Architecture — Acme Architecture", gc.ACCT_TYPE_EXPENSE)
         create_account(expenses, "Structural Engineering — Peak Structural",
                       gc.ACCT_TYPE_EXPENSE)
+        create_account(expenses, "MEP Consulting — Meridian MEP", gc.ACCT_TYPE_EXPENSE)
+        create_account(expenses, "HVAC Engineering — Summit HVAC", gc.ACCT_TYPE_EXPENSE)
 
     yield test_book_path
 
