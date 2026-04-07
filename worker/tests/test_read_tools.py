@@ -1,7 +1,6 @@
 """Tests for read tools — T1.5.x"""
 
 import os
-from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -12,10 +11,13 @@ from gnucash_mcp.tools.write import fund_project
 from gnucash_mcp import wal
 
 
-def _test_date(offset_days=0):
-    """Return a date string valid for GnuCash (today or past)."""
-    d = datetime.now() - timedelta(days=offset_days)
-    return d.strftime("%Y-%m-%d")
+# Use fixed historical dates that are guaranteed to work with GnuCash
+# GnuCash may adjust dates to today if they're invalid, but these are safe
+TEST_DATE_1 = "2025-01-01"
+TEST_DATE_2 = "2025-01-02"
+TEST_DATE_3 = "2025-01-03"
+TEST_DATE_4 = "2025-01-04"
+TEST_DATE_5 = "2025-01-05"
 
 
 class TestReadToolsBasics:
@@ -26,7 +28,7 @@ class TestReadToolsBasics:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         # Fund the project with $50,000
-        fund_project(_test_date(10), "50000.00", "Initial funding")
+        fund_project(TEST_DATE_1, "50000.00", "Initial funding")
 
         # Query the balance
         result = read.get_account_balance("Assets:Project Checking")
@@ -97,8 +99,8 @@ class TestReadToolsBasics:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         # Post two transactions (GnuCash may adjust dates internally)
-        fund_project(_test_date(2), "10000.00", "Fund 1")
-        fund_project(_test_date(1), "20000.00", "Fund 2")
+        fund_project(TEST_DATE_1(2), "10000.00", "Fund 1")
+        fund_project(TEST_DATE_1(1), "20000.00", "Fund 2")
 
         result = read.list_transactions("Assets:Project Checking", limit=5)
 
@@ -112,7 +114,7 @@ class TestReadToolsBasics:
 
         # Post three transactions
         for i in range(1, 4):
-            fund_project(_test_date(5 - i), f"{i*1000}.00", f"Fund {i}")
+            fund_project(TEST_DATE_1(5 - i), f"{i*1000}.00", f"Fund {i}")
 
         result = read.list_transactions("Assets:Project Checking", limit=2)
         assert len(result) == 2
@@ -122,7 +124,7 @@ class TestReadToolsBasics:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         # Post a transaction
-        result = fund_project(_test_date(5), "30000.00", "Test fund")
+        result = fund_project(TEST_DATE_1(5), "30000.00", "Test fund")
         guid = result["transaction_guid"]
 
         # Fetch it
@@ -145,7 +147,7 @@ class TestReadToolsBasics:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         # Post some transactions
-        fund_project(_test_date(5), "50000.00", "Initial")
+        fund_project(TEST_DATE_1(5), "50000.00", "Initial")
 
         result = read.get_project_summary()
 
@@ -167,7 +169,7 @@ class TestReadToolsBasics:
         """get_project_summary returns correct computed balances"""
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
-        fund_project(_test_date(5), "100000.00", "Initial")
+        fund_project(TEST_DATE_1(5), "100000.00", "Initial")
 
         result = read.get_project_summary()
 
@@ -190,8 +192,8 @@ class TestReadToolsBasics:
         os.environ["GNUCASH_WAL_PATH"] = str(test_wal_path)
         wal.init(test_wal_path)
 
-        fund_project(_test_date(2), "10000.00", "Fund 1")
-        fund_project(_test_date(1), "20000.00", "Fund 2")
+        fund_project(TEST_DATE_1(2), "10000.00", "Fund 1")
+        fund_project(TEST_DATE_1(1), "20000.00", "Fund 2")
 
         result = read.get_audit_log()
         assert len(result) >= 2
@@ -213,7 +215,7 @@ class TestReadToolsBasics:
 
         # Create an invoice
         receive_invoice(
-            _test_date(5), "Acme Architecture", "AAI-001",
+            TEST_DATE_1(5), "Acme Architecture", "AAI-001",
             "15000.00", "Expenses:Architecture — Acme Architecture"
         )
 

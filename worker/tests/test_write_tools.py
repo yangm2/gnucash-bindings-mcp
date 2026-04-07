@@ -1,7 +1,6 @@
 """Tests for write tools — T1.6.x"""
 
 import os
-from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -15,10 +14,13 @@ from gnucash_mcp.session import book_session, get_account
 from gnucash_mcp import wal
 
 
-def _test_date(offset_days=0):
-    """Return a date string valid for GnuCash (today or past)."""
-    d = datetime.now() - timedelta(days=offset_days)
-    return d.strftime("%Y-%m-%d")
+# Use fixed historical dates that are guaranteed to work with GnuCash
+TEST_DATE_1 = "2025-01-01"
+TEST_DATE_2 = "2025-01-02"
+TEST_DATE_3 = "2025-01-03"
+TEST_DATE_4 = "2025-01-04"
+TEST_DATE_5 = "2025-01-05"
+TEST_DATE_OLD = "2024-12-01"
 
 
 class TestFundProject:
