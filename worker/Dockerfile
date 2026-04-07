@@ -32,9 +32,13 @@ RUN uv venv --system-site-packages /opt/venv
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
 
+# external dependencies
 COPY pyproject.toml /src/pyproject.toml
-COPY gnucash_mcp/ /src/gnucash_mcp/
+# uv sync installs the project and its dependencies; creates uv.lock if absent
+RUN cd /src && uv sync --no-dev --no-install-project
 
+# internal dependencies
+COPY gnucash_mcp/ /src/gnucash_mcp/
 # uv sync installs the project and its dependencies; creates uv.lock if absent
 RUN uv sync --project /src --no-dev
 
