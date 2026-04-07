@@ -46,7 +46,7 @@ def _acc_to_dict(acc) -> dict:
 
 def _split_to_dict(split) -> dict:
     return {
-        "account": split.GetAccount().GetFullName(),
+        "account": split.GetAccount().name,
         "amount": _balance_str(split.GetAmount()),
         "memo": split.GetMemo(),
     }
@@ -55,7 +55,7 @@ def _split_to_dict(split) -> dict:
 def _txn_to_dict(txn) -> dict:
     splits = [_split_to_dict(s) for s in txn.GetSplitList()]
     return {
-        "guid": str(txn.GetGUID()),
+        "guid": txn.GetGUID().to_string(),
         "date": txn.GetDate().strftime("%Y-%m-%d") if txn.GetDate() else None,
         "description": txn.GetDescription(),
         "splits": splits,
@@ -112,7 +112,7 @@ def list_transactions(account_path: str, limit: int = 20) -> list:
         for split in splits:
             txn = split.GetParent()
             result.append({
-                "guid": str(txn.GetGUID()),
+                "guid": txn.GetGUID().to_string(),
                 "date": txn.GetDate().strftime("%Y-%m-%d") if txn.GetDate() else None,
                 "description": txn.GetDescription(),
                 "amount": _balance_str(split.GetAmount()),
@@ -121,14 +121,26 @@ def list_transactions(account_path: str, limit: int = 20) -> list:
         return result
 
 
+def _find_txn_by_guid(book, guid_str: str):
+    """Walk all accounts recursively to find a transaction by GUID string."""
+    def _walk(acc):
+        for split in acc.GetSplitList():
+            txn = split.GetParent()
+            if txn.GetGUID().to_string() == guid_str:
+                return txn
+        for child in acc.get_children():
+            result = _walk(child)
+            if result is not None:
+                return result
+        return None
+    return _walk(book.get_root_account())
+
+
 def get_transaction(tx_id: str) -> dict:
     """Fetch a single transaction by GUID."""
     with book_session(_book_path()) as session:
-        from gnucash import GUID
         try:
-            guid = GUID()
-            guid.string_set(tx_id)
-            txn = guid.TransactionLookup(session.book)
+            txn = _find_txn_by_guid(session.book, tx_id)
             if txn is None:
                 return {"error": f"Transaction {tx_id!r} not found"}
             return _txn_to_dict(txn)
@@ -202,9 +214,12 @@ def vendors_resource() -> list:
         vendors = []
         for acc in liabilities.get_children():
             if acc.name.startswith("AP — "):
+                # AP accounts carry credit balances (negative in GnuCash).
+                # Negate to show the amount owed as a positive number.
+                raw = acc.GetBalance().to_double()
                 vendors.append({
                     "name": acc.name[5:],  # strip "AP — " prefix
                     "account": acc.name,
-                    "balance": _balance_str(acc.GetBalance()),
+                    "balance": f"{-raw:.2f}",
                 })
         return vendors

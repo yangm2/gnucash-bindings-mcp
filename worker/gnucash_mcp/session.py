@@ -9,7 +9,9 @@ Public API:
 """
 
 from contextlib import contextmanager
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
+import glob
 from pathlib import Path
 
 from gnucash import Session, SessionOpenMode
@@ -21,33 +23,47 @@ class AccountNotFoundError(Exception):
     pass
 
 
+def _purge_same_second_backup(path: Path) -> None:
+    """Remove the GnuCash backup that would collide with the current-second save.
+
+    GnuCash XML backend creates ``{path}.YYYYMMDDHHMMSS.gnucash`` before each
+    save.  When two saves occur within the same second the backup already exists
+    and the save silently writes nothing.  Deleting it lets the save proceed.
+    """
+    ts = datetime.now().strftime("%Y%m%d%H%M%S")
+    for f in glob.glob(f"{path}.{ts}.gnucash"):
+        try:
+            Path(f).unlink()
+        except OSError:
+            pass
+
+
 def open_session(path: Path, is_new: bool = False) -> Session:
     """Open a GnuCash XML session.
 
-    For new books: calls session.save() immediately (required before mutations)
-    and calls get_root_account() to fully initialize the XML structure.
-    Stale .LCK files from prior crashes are cleared on NORMAL_OPEN.
+    For new books: initializes the root account then saves so the file exists
+    on disk before any mutations.  GnuCash uses OS-level flock() on .LCK files
+    to distinguish stale from live locks, so we leave .LCK management to it.
     """
     path = Path(path)
-    lck = Path(str(path) + ".LCK")
-    if lck.exists() and not is_new:
-        lck.unlink()  # stale lock from prior crash — safe to clear
-
     mode = (SessionOpenMode.SESSION_NEW_STORE if is_new
             else SessionOpenMode.SESSION_NORMAL_OPEN)
     session = Session(f"xml://{path}", mode)
 
     if is_new:
-        # Early save required before any mutations on new XML books.
-        session.save()
-        # Trigger root account initialization so XML is fully written.
+        # Initialize root account first so the XML has content to write.
         session.book.get_root_account()
+        # Save to disk — now the file is created.
+        _purge_same_second_backup(path)
+        session.save()
 
     return session
 
 
-def close_session(session: Session) -> None:
+def close_session(session: Session, path: Path = None) -> None:
     """Save and end session, releasing the .LCK file."""
+    if path is not None:
+        _purge_same_second_backup(path)
     session.save()
     session.end()
 
@@ -55,12 +71,13 @@ def close_session(session: Session) -> None:
 @contextmanager
 def book_session(path: Path, is_new: bool = False):
     """Context manager: open → yield session → save+end even on exception."""
+    path = Path(path)
     session = open_session(path, is_new=is_new)
     try:
         yield session
     finally:
         try:
-            close_session(session)
+            close_session(session, path=path)
         except Exception:
             # end() can fail if session already ended; suppress and try bare end()
             try:

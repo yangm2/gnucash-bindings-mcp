@@ -33,12 +33,12 @@ def _parse_date(date_str: str):
     return Date.fromisoformat(date_str)
 
 
-def _post_transaction(book, date_str: str, description: str, splits: list) -> str:
-    """Create and commit a balanced transaction. Returns GUID string."""
+def _post_transaction(book, date_str: str, description: str, splits: list):
+    """Create and commit a balanced transaction. Returns (txn, guid_str)."""
     txn = Transaction(book)
     txn.BeginEdit()
     d = _parse_date(date_str)
-    txn.SetDate(d.year, d.month, d.day)
+    txn.SetDate(d.day, d.month, d.year)
     txn.SetDescription(description)
 
     usd = book.get_table().lookup("CURRENCY", "USD")
@@ -56,23 +56,17 @@ def _post_transaction(book, date_str: str, description: str, splits: list) -> st
             split.SetMemo(spec["memo"])
 
     txn.CommitEdit()
-    guid = txn.GetGUID()
-    return guid.to_string()
+    return txn, txn.GetGUID().to_string()
 
 
-def _stamp_slots(book, guid_str: str, wal_entry: dict, tool_name: str) -> None:
-    """Look up transaction by GUID and stamp MCP tracking slots."""
+def _stamp_slots(txn, wal_entry: dict, tool_name: str) -> None:
+    """Stamp MCP tracking slots on a transaction (best-effort)."""
     try:
-        from gnucash import GUID
-        guid = GUID()
-        guid.string_set(guid_str)
-        txn = guid.TransactionLookup(book)
-        if txn:
-            txn.BeginEdit()
-            txn.SetSlot("mcp-wal-id", wal_entry["id"])
-            txn.SetSlot("mcp-tool", tool_name)
-            txn.SetSlot("mcp-version", "1")
-            txn.CommitEdit()
+        txn.BeginEdit()
+        txn.SetSlot("mcp-wal-id", wal_entry["id"])
+        txn.SetSlot("mcp-tool", tool_name)
+        txn.SetSlot("mcp-version", "1")
+        txn.CommitEdit()
     except Exception:
         pass  # Slots are best-effort; never fail the transaction
 
@@ -95,8 +89,8 @@ def post_transaction(date: str, description: str, splits: list) -> dict:
     })
 
     with book_session(_book_path()) as session:
-        guid = _post_transaction(session.book, date, description, splits)
-        _stamp_slots(session.book, guid, entry, "post_transaction")
+        txn, guid = _post_transaction(session.book, date, description, splits)
+        _stamp_slots(txn, entry, "post_transaction")
 
     wal.mark_committed(entry["id"], transaction_guid=guid)
     return {"status": "ok", "transaction_guid": guid, "wal_id": entry["id"]}
@@ -111,12 +105,12 @@ def fund_project(date: str, amount: str, memo: str = "") -> dict:
     entry = wal.append("fund_project", {"date": date, "amount": amount, "memo": memo})
 
     with book_session(_book_path()) as session:
-        guid = _post_transaction(
+        txn, guid = _post_transaction(
             session.book, date,
             f"Fund project{': ' + memo if memo else ''}",
             splits
         )
-        _stamp_slots(session.book, guid, entry, "fund_project")
+        _stamp_slots(txn, entry, "fund_project")
 
     wal.mark_committed(entry["id"], transaction_guid=guid)
     return {"status": "ok", "transaction_guid": guid, "wal_id": entry["id"]}
@@ -136,10 +130,10 @@ def receive_invoice(date: str, vendor: str, invoice_ref: str,
     })
 
     with book_session(_book_path()) as session:
-        guid = _post_transaction(
+        txn, guid = _post_transaction(
             session.book, date, f"Invoice {invoice_ref} — {vendor}", splits
         )
-        _stamp_slots(session.book, guid, entry, "receive_invoice")
+        _stamp_slots(txn, entry, "receive_invoice")
 
     wal.mark_committed(entry["id"], transaction_guid=guid)
     return {"status": "ok", "transaction_guid": guid, "wal_id": entry["id"]}
@@ -157,10 +151,10 @@ def pay_invoice(date: str, vendor: str, invoice_ref: str, amount: str) -> dict:
     })
 
     with book_session(_book_path()) as session:
-        guid = _post_transaction(
+        txn, guid = _post_transaction(
             session.book, date, f"Payment {invoice_ref} — {vendor}", splits
         )
-        _stamp_slots(session.book, guid, entry, "pay_invoice")
+        _stamp_slots(txn, entry, "pay_invoice")
 
     wal.mark_committed(entry["id"], transaction_guid=guid)
     return {"status": "ok", "transaction_guid": guid, "wal_id": entry["id"]}
@@ -181,10 +175,10 @@ def post_interest(month: str, amount: str) -> dict:
     entry = wal.append("post_interest", {"month": month, "amount": amount})
 
     with book_session(_book_path()) as session:
-        guid = _post_transaction(
+        txn, guid = _post_transaction(
             session.book, date, f"Interest income — {month}", splits
         )
-        _stamp_slots(session.book, guid, entry, "post_interest")
+        _stamp_slots(txn, entry, "post_interest")
 
     wal.mark_committed(entry["id"], transaction_guid=guid)
     return {"status": "ok", "transaction_guid": guid, "wal_id": entry["id"]}

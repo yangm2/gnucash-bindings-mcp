@@ -487,3 +487,132 @@ T1.6.10 Post all known invoices from project documents:
 
 ---
 
+### Phase 1 implementation learnings
+
+Findings discovered during implementation that were not anticipated in the design.
+
+#### GnuCash XML backup collision causes silent save failure
+
+Every `session.save()` on the XML backend first creates a timestamped backup file
+`{path}.YYYYMMDDHHMMSS.gnucash`. If two saves occur within the same wall-clock second,
+the backup already exists and the second save **silently writes nothing** — no exception
+is raised. This is a silent data-loss bug.
+
+**Symptom:** A test that calls `fund_project` twice in quick succession would reopen
+the book and find only one transaction — or an empty book.
+
+**Fix:** Before every `session.save()`, delete the would-be backup file if it exists:
+
+```python
+def _purge_same_second_backup(path: Path) -> None:
+    ts = datetime.now().strftime("%Y%m%d%H%M%S")
+    for f in glob.glob(f"{path}.{ts}.gnucash"):
+        try:
+            Path(f).unlink()
+        except OSError:
+            pass
+```
+
+Call this in both `open_session` (before the new-book initial save) and
+`close_session` (before the final save). Tests run inside Docker containers are
+especially prone to this because they share a slow-clock environment.
+
+**Accumulation:** Every successful save also leaves behind the previous-second
+backup file. In a long-lived container writing many transactions, these pile up
+alongside the book file (`project.gnucash.20250101120000.gnucash`, etc.).
+GnuCash does not prune them automatically. For a production deployment, either
+mount the book on a path with periodic cleanup of `*.gnucash` backup globs, or
+accept the accumulation given the low transaction volume of a single construction
+project.
+
+#### `get_root_account()` must be called before the early save, not after
+
+The M1.4 design shows `session.save()` before `get_root_account()`. This is wrong:
+saving before calling `get_root_account()` writes an empty/incomplete XML file.
+A subsequent `SESSION_NORMAL_OPEN` raises `ERR_FILEIO_FILE_NOT_FOUND` because the
+root account element is absent.
+
+Correct sequence for new books:
+```python
+session = Session(f"xml://{path}", SessionOpenMode.SESSION_NEW_STORE)
+session.book.get_root_account()   # initialize root element first
+_purge_same_second_backup(path)
+session.save()                    # now the file has valid content
+```
+
+#### `xaccTransSetDate` argument order is `(day, month, year)`, not `(year, month, day)`
+
+The GnuCash Python binding's `Transaction.SetDate()` wraps the C function
+`xaccTransSetDate(txn, day, month, year)`. Passing `(d.year, d.month, d.day)` silently
+sets the day to 2025 (invalid) and GnuCash adjusts the date internally with no error.
+The correct call is:
+
+```python
+txn.SetDate(d.day, d.month, d.year)
+```
+
+#### `.LCK` files use OS-level `flock()`, not PID content
+
+The M1.4 design assumed `.LCK` files contain PID information that can be used to
+detect stale locks. In practice, GnuCash `.LCK` files on Linux/macOS are **empty**.
+GnuCash uses `flock()` on the `.LCK` inode to distinguish a live lock from a stale one.
+
+Consequence: deleting the `.LCK` file in `open_session` for all non-new opens
+(as the original design showed) defeats live lock detection. A second process can
+create a new `.LCK` inode, acquire flock on it with no conflict, and open the book
+concurrently — the `test_second_open_on_locked_book_raises_error` test would pass
+in isolation but fail under the actual scenario.
+
+**Fix:** Remove the unconditional `.LCK` deletion. Let GnuCash's own flock mechanism
+handle live vs. stale detection. A truly stale `.LCK` (no process holds flock on it)
+is handled by GnuCash internally when it attempts `SESSION_NORMAL_OPEN`.
+
+#### GUID lookup via `xaccTransLookup` fails with SWIG type mismatch
+
+`xaccTransLookup(guid, book)` requires a raw C `QofBook*` pointer. The Python
+`book` object is a SWIG-wrapped `Book` — calling `.instance` on it yields a
+`SwigPyObject` without usable Python methods, not the type `xaccTransLookup` expects.
+
+**Fix:** Walk all accounts recursively and compare GUID strings:
+
+```python
+def _find_txn_by_guid(book, guid_str: str):
+    def _walk(acc):
+        for split in acc.GetSplitList():
+            txn = split.GetParent()
+            if txn.GetGUID().to_string() == guid_str:
+                return txn
+        for child in acc.get_children():
+            result = _walk(child)
+            if result is not None:
+                return result
+        return None
+    return _walk(book.get_root_account())
+```
+
+For write tools, avoid the lookup entirely by returning the transaction object
+directly from `_post_transaction` and passing it to `_stamp_slots` before
+`session.end()`.
+
+#### `str(guid)` returns a memory address, not the GUID string
+
+Python's `__str__` on SWIG objects returns the object memory representation.
+Use `guid.to_string()` (or `txn.GetGUID().to_string()`).
+
+#### `Account.GetFullName()` does not exist in this GnuCash version
+
+Use `.name` for the simple (leaf) account name. For a full path, walk `GetParent()`
+up the tree or use the already-known path string.
+
+#### AP account balances are negative in `GetBalance()`
+
+Accounts Payable are liability accounts — credits are normal. `GetBalance()` returns
+a negative value when money is owed. Negate before displaying to users:
+
+```python
+raw = acc.GetBalance().to_double()
+"balance": f"{-raw:.2f}"
+```
+
+---
+

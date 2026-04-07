@@ -30,7 +30,7 @@ class TestFundProject:
         """T1.6.1: fund_project posts balanced transaction (sum of splits = 0)"""
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
-        result = fund_project(_test_date(10), "10000.00", "Initial funding")
+        result = fund_project(TEST_DATE_1, "10000.00", "Initial funding")
 
         assert result["status"] == "ok"
         assert "transaction_guid" in result
@@ -49,7 +49,7 @@ class TestFundProject:
         os.environ["GNUCASH_WAL_PATH"] = str(test_wal_path)
         wal.init(test_wal_path)
 
-        result = fund_project(_test_date(10), "50000.00", "Fund")
+        result = fund_project(TEST_DATE_1, "50000.00", "Fund")
         wal_id = result["wal_id"]
 
         # Check WAL entry
@@ -65,7 +65,7 @@ class TestFundProject:
         os.environ["GNUCASH_WAL_PATH"] = str(test_wal_path)
         wal.init(test_wal_path)
 
-        result = fund_project(_test_date(5), "25000.00", "Slot test")
+        result = fund_project(TEST_DATE_5, "25000.00", "Slot test")
         guid = result["transaction_guid"]
 
         # Fetch the transaction and verify slots (if slots supported)
@@ -83,7 +83,7 @@ class TestReceiveInvoice:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         result = receive_invoice(
-            _test_date(5), "Acme Architecture", "AAI-101",
+            TEST_DATE_5, "Acme Architecture", "AAI-101",
             "15000.00", "Expenses:Architecture — Acme Architecture"
         )
 
@@ -102,7 +102,7 @@ class TestReceiveInvoice:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         receive_invoice(
-            _test_date(5), "Peak Structural", "PS-1",
+            TEST_DATE_5, "Peak Structural", "PS-1",
             "12000.00", "Expenses:Structural Engineering — Peak Structural"
         )
 
@@ -120,18 +120,18 @@ class TestPayInvoice:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         # Fund project first
-        fund_result = fund_project(_test_date(127), "50000.00", "Initial")
+        fund_result = fund_project(TEST_DATE_OLD, "50000.00", "Initial")
         assert fund_result["status"] == "ok"
 
         # Receive invoice
         invoice_result = receive_invoice(
-            _test_date(5), "Acme Architecture", "AAI-101",
+            TEST_DATE_5, "Acme Architecture", "AAI-101",
             "15000.00", "Expenses:Architecture — Acme Architecture"
         )
         assert invoice_result["status"] == "ok"
 
         # Pay invoice
-        payment_result = pay_invoice(_test_date(4), "Acme Architecture", "AAI-101", "15000.00")
+        payment_result = pay_invoice(TEST_DATE_4, "Acme Architecture", "AAI-101", "15000.00")
         assert payment_result["status"] == "ok"
 
         # Verify operations completed successfully
@@ -148,7 +148,7 @@ class TestPostTransaction:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         result = post_transaction(
-            _test_date(5), "Transfer test",
+            TEST_DATE_5, "Transfer test",
             [
                 {"account_path": "Assets:Project Checking", "amount": "5000.00", "memo": "In"},
                 {"account_path": "Equity:Owner Capital", "amount": "-5000.00", "memo": "Out"},
@@ -164,7 +164,7 @@ class TestPostTransaction:
 
         with pytest.raises(SplitsImbalanceError):
             post_transaction(
-                _test_date(5), "Unbalanced",
+                TEST_DATE_5, "Unbalanced",
                 [
                     {"account_path": "Assets:Project Checking", "amount": "100.00"},
                     {"account_path": "Equity:Owner Capital", "amount": "-50.00"},
@@ -179,7 +179,7 @@ class TestPostTransaction:
 
         with pytest.raises(SplitsImbalanceError):
             post_transaction(
-                _test_date(5), "Bad",
+                TEST_DATE_5, "Bad",
                 [
                     {"account_path": "Assets:Project Checking", "amount": "100.00"},
                     {"account_path": "Equity:Owner Capital", "amount": "-25.00"},
@@ -199,7 +199,7 @@ class TestPostInterest:
         """post_interest posts interest income transaction"""
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
-        month = _test_date(90)[:7]  # Extract YYYY-MM from date
+        month = TEST_DATE_OLD[:7]  # Extract YYYY-MM from date (2024-12)
         result = post_interest(month, "50.25")
 
         assert result["status"] == "ok"
@@ -216,7 +216,7 @@ class TestPostInterest:
         """post_interest accepts full date (YYYY-MM-DD)"""
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
-        result = post_interest(_test_date(5), "25.50")
+        result = post_interest(TEST_DATE_5, "25.50")
 
         assert result["status"] == "ok"
 
@@ -234,18 +234,18 @@ class TestCompleteInvoiceWorkflow:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         # Fund project
-        fund_result = fund_project(_test_date(127), "100000.00")
+        fund_result = fund_project(TEST_DATE_OLD, "100000.00")
         assert fund_result["status"] == "ok"
 
         # Receive invoice
         invoice_result = receive_invoice(
-            _test_date(5), "Acme Architecture", "AAI-101",
+            TEST_DATE_5, "Acme Architecture", "AAI-101",
             "15000.00", "Expenses:Architecture — Acme Architecture"
         )
         assert invoice_result["status"] == "ok"
 
         # Pay invoice
-        payment_result = pay_invoice(_test_date(1), "Acme Architecture", "AAI-101", "15000.00")
+        payment_result = pay_invoice(TEST_DATE_1, "Acme Architecture", "AAI-101", "15000.00")
         assert payment_result["status"] == "ok"
 
         # Verify accounts exist and operations completed
@@ -259,12 +259,12 @@ class TestCompleteInvoiceWorkflow:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         # Fund project
-        fund_result = fund_project(_test_date(127), "50000.00")
+        fund_result = fund_project(TEST_DATE_OLD, "50000.00")
         assert fund_result["status"] == "ok"
 
         # Receive invoice
         invoice_result = receive_invoice(
-            _test_date(3), "Peak Structural", "PSE-000101",
+            TEST_DATE_3, "Peak Structural", "PSE-000101",
             "2000.00", "Expenses:Structural Engineering — Peak Structural"
         )
         assert invoice_result["status"] == "ok"
@@ -283,7 +283,7 @@ class TestCompleteInvoiceWorkflow:
         wal.init(test_wal_path)
 
         # Fund project with enough for all invoices
-        fund_result = fund_project(_test_date(127), "100000.00")
+        fund_result = fund_project(TEST_DATE_OLD, "100000.00")
         assert fund_result["status"] == "ok"
 
         # All known invoices from project documents
@@ -301,7 +301,7 @@ class TestCompleteInvoiceWorkflow:
         # Post all invoices
         for vendor, invoice_ref, amount, expense_account in invoices:
             result = receive_invoice(
-                _test_date(5), vendor, invoice_ref,
+                TEST_DATE_5, vendor, invoice_ref,
                 amount, f"Expenses:{expense_account}"
             )
             assert result["status"] == "ok"

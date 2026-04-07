@@ -99,8 +99,8 @@ class TestReadToolsBasics:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         # Post two transactions (GnuCash may adjust dates internally)
-        fund_project(TEST_DATE_1(2), "10000.00", "Fund 1")
-        fund_project(TEST_DATE_1(1), "20000.00", "Fund 2")
+        fund_project(TEST_DATE_2, "10000.00", "Fund 1")
+        fund_project(TEST_DATE_1, "20000.00", "Fund 2")
 
         result = read.list_transactions("Assets:Project Checking", limit=5)
 
@@ -113,8 +113,9 @@ class TestReadToolsBasics:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         # Post three transactions
+        dates = [TEST_DATE_4, TEST_DATE_3, TEST_DATE_2]
         for i in range(1, 4):
-            fund_project(TEST_DATE_1(5 - i), f"{i*1000}.00", f"Fund {i}")
+            fund_project(dates[i - 1], f"{i*1000}.00", f"Fund {i}")
 
         result = read.list_transactions("Assets:Project Checking", limit=2)
         assert len(result) == 2
@@ -124,7 +125,7 @@ class TestReadToolsBasics:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         # Post a transaction
-        result = fund_project(TEST_DATE_1(5), "30000.00", "Test fund")
+        result = fund_project(TEST_DATE_5, "30000.00", "Test fund")
         guid = result["transaction_guid"]
 
         # Fetch it
@@ -147,7 +148,7 @@ class TestReadToolsBasics:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         # Post some transactions
-        fund_project(TEST_DATE_1(5), "50000.00", "Initial")
+        fund_project(TEST_DATE_5, "50000.00", "Initial")
 
         result = read.get_project_summary()
 
@@ -169,7 +170,7 @@ class TestReadToolsBasics:
         """get_project_summary returns correct computed balances"""
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
-        fund_project(TEST_DATE_1(5), "100000.00", "Initial")
+        fund_project(TEST_DATE_5, "100000.00", "Initial")
 
         result = read.get_project_summary()
 
@@ -192,8 +193,8 @@ class TestReadToolsBasics:
         os.environ["GNUCASH_WAL_PATH"] = str(test_wal_path)
         wal.init(test_wal_path)
 
-        fund_project(TEST_DATE_1(2), "10000.00", "Fund 1")
-        fund_project(TEST_DATE_1(1), "20000.00", "Fund 2")
+        fund_project(TEST_DATE_2, "10000.00", "Fund 1")
+        fund_project(TEST_DATE_1, "20000.00", "Fund 2")
 
         result = read.get_audit_log()
         assert len(result) >= 2
@@ -215,7 +216,7 @@ class TestReadToolsBasics:
 
         # Create an invoice
         receive_invoice(
-            TEST_DATE_1(5), "Acme Architecture", "AAI-001",
+            TEST_DATE_5, "Acme Architecture", "AAI-001",
             "15000.00", "Expenses:Architecture — Acme Architecture"
         )
 
