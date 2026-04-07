@@ -25,7 +25,10 @@ class TestSessionLifecycle:
 
     def test_open_session_calls_early_save(self, test_book_path):
         """T1.4.2: open_session(path, is_new=True) calls save() before returning"""
-        assert not test_book_path.exists(), "Book should not exist before open_session"
+        # Clean up any existing file
+        if test_book_path.exists():
+            test_book_path.unlink()
+
         session = open_session(test_book_path, is_new=True)
         try:
             # For a new book, save() should have been called, so file exists
