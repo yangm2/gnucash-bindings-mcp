@@ -39,13 +39,15 @@ EXPENSE_CATEGORIES: dict[str, str] = {
     "HVAC": "HVAC Engineering",
 }
 
+_AP_PREFIX = "AP — "
+
 
 def _book_path() -> Path:
     return Path(os.environ.get("GNUCASH_BOOK_PATH", "/data/project.gnucash"))
 
 
 def _ap_name(vendor_name: str) -> str:
-    return f"AP — {vendor_name}"
+    return f"{_AP_PREFIX}{vendor_name}"
 
 
 def _expense_account_name(category: str, vendor_name: str) -> str:
@@ -71,6 +73,26 @@ def _parse_desc(ap_acc) -> tuple[str, str]:
     return "unknown", ""
 
 
+def _create_ap_account(book, ap_name: str, liabilities, usd, description: str) -> None:
+    ap = Account(book)
+    ap.SetName(ap_name)
+    ap.SetType(gc.ACCT_TYPE_PAYABLE)
+    ap.SetCommodity(usd)
+    ap.SetDescription(description)
+    liabilities.append_child(ap)
+
+
+def _ensure_expense_account(book, expense_name: str, expenses) -> None:
+    existing = {acc.name for acc in expenses.get_children()}
+    if expense_name not in existing:
+        usd = _get_usd(book)
+        exp_acc = Account(book)
+        exp_acc.SetName(expense_name)
+        exp_acc.SetType(gc.ACCT_TYPE_EXPENSE)
+        exp_acc.SetCommodity(usd)
+        expenses.append_child(exp_acc)
+
+
 # ── public tools ──────────────────────────────────────────────────────────────
 
 
@@ -91,42 +113,21 @@ def vendor_add(
 
     with book_session(_book_path()) as session:
         book = session.book
-        usd = _get_usd(book)
         liabilities = get_account(book, "Liabilities")
         existing_ap = {acc.name for acc in liabilities.get_children()}
         ap_name = _ap_name(name)
 
         if trade:
             get_account(book, trade)  # raises AccountNotFoundError if path missing
-
             if ap_name not in existing_ap:
-                ap = Account(book)
-                ap.SetName(ap_name)
-                ap.SetType(gc.ACCT_TYPE_PAYABLE)
-                ap.SetCommodity(usd)
-                ap.SetDescription(f"trade:{trade}")
-                liabilities.append_child(ap)
-
+                _create_ap_account(book, ap_name, liabilities, _get_usd(book), f"trade:{trade}")
         else:
             expense_name = _expense_account_name(expense_category, name)  # type: ignore[arg-type]
             expense_path = f"Expenses:{expense_name}"
-
+            usd = _get_usd(book)
             if ap_name not in existing_ap:
-                ap = Account(book)
-                ap.SetName(ap_name)
-                ap.SetType(gc.ACCT_TYPE_PAYABLE)
-                ap.SetCommodity(usd)
-                ap.SetDescription(f"professional:{expense_path}")
-                liabilities.append_child(ap)
-
-            expenses = get_account(book, "Expenses")
-            existing_exp = {acc.name for acc in expenses.get_children()}
-            if expense_name not in existing_exp:
-                exp_acc = Account(book)
-                exp_acc.SetName(expense_name)
-                exp_acc.SetType(gc.ACCT_TYPE_EXPENSE)
-                exp_acc.SetCommodity(usd)
-                expenses.append_child(exp_acc)
+                _create_ap_account(book, ap_name, liabilities, usd, f"professional:{expense_path}")
+            _ensure_expense_account(book, expense_name, get_account(book, "Expenses"))
 
     return {"status": "ok", "ap_path": f"Liabilities:{ap_name}"}
 
@@ -142,9 +143,9 @@ def vendor_list() -> list[dict]:
 
         vendors = []
         for acc in liabilities.get_children():
-            if not acc.name.startswith("AP — "):
+            if not acc.name.startswith(_AP_PREFIX):
                 continue
-            vendor_name = acc.name[5:]
+            vendor_name = acc.name[len(_AP_PREFIX) :]
             vtype, path = _parse_desc(acc)
             balance = f"{account_balance_float(acc, negate=True):.2f}"
             entry: dict = {
@@ -215,16 +216,12 @@ def vendor_rename(old_name: str, new_name: str) -> dict:
         if vtype == "professional":
             try:
                 exp_acc = get_account(book, path)
-                # Preserve category prefix, swap vendor name suffix
-                old_exp_name = exp_acc.name
-                prefix = old_exp_name.split(" — ")[0]
+                prefix = exp_acc.name.split(" — ")[0]
                 new_exp_name = f"{prefix} — {new_name}"
                 exp_acc.SetName(new_exp_name)
-                new_expense_path = f"Expenses:{new_exp_name}"
-                ap_acc.SetDescription(f"professional:{new_expense_path}")
+                ap_acc.SetDescription(f"professional:Expenses:{new_exp_name}")
             except AccountNotFoundError:
                 pass
-        # trade: description (trade path) is unchanged
 
         ap_acc.SetName(_ap_name(new_name))
 
@@ -263,19 +260,8 @@ def vendor_update(
             ap_acc.SetDescription(f"trade:{trade}")
         else:
             expense_name = _expense_account_name(expense_category, name)  # type: ignore[arg-type]
-            new_expense_path = f"Expenses:{expense_name}"
-
-            expenses = get_account(book, "Expenses")
-            existing_exp = {acc.name for acc in expenses.get_children()}
-            if expense_name not in existing_exp:
-                usd = _get_usd(book)
-                new_exp = Account(book)
-                new_exp.SetName(expense_name)
-                new_exp.SetType(gc.ACCT_TYPE_EXPENSE)
-                new_exp.SetCommodity(usd)
-                expenses.append_child(new_exp)
-
-            ap_acc.SetDescription(f"professional:{new_expense_path}")
+            _ensure_expense_account(book, expense_name, get_account(book, "Expenses"))
+            ap_acc.SetDescription(f"professional:Expenses:{expense_name}")
 
     return {"status": "ok", "name": name}
 
