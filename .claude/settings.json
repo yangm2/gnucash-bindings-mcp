@@ -10,7 +10,6 @@
       "WebFetch(domain:ollama.com)",
       "Bash(mise build:*)",
       "Bash(mise test:*)",
-      "Bash(grep -n \"MC-6\\\\|chart of account\" /Volumes/Work/prj/gnucash-bindings-mcp/docs/development/*.md)",
       "Bash(mise build-dev:*)",
       "Bash(mise fmt:*)",
       "Bash(mise lint:*)"

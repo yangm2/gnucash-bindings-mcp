@@ -20,3 +20,7 @@ __pycache__/
 
 # Legacy location (was committed by mistake)
 test-data/
+
+# Local Claude settings (machine-specific paths)
+.claude/settings.local.json
+.claude/*.local.md
