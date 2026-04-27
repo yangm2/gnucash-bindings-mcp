@@ -1,4 +1,4 @@
-from gnucash_mcp.tools import read, write
+from gnucash_mcp.tools import book, read, write
 import json
 
 HANDLERS = {
@@ -11,6 +11,16 @@ HANDLERS = {
     "get_audit_log": read.get_audit_log,  # reads WAL, no GnuCash session
     "__unlock_ledger__": read.unlock_ledger,
     "gnucash://vendors": read.vendors_resource,  # dynamic resource
+    "gnucash://book-setup-guide": book.book_setup_guide_resource,
+    "gnucash://expected-chart": book.expected_chart_resource,
+    # Tier 2 — book management
+    "book_add_account": book.book_add_account,
+    "book_get_account_tree": book.book_get_account_tree,
+    "book_verify_structure": book.book_verify_structure,
+    "book_set_opening_balance": book.book_set_opening_balance,
+    "book_rename_account": book.book_rename_account,
+    "book_move_account": book.book_move_account,
+    "book_delete_account": book.book_delete_account,
     # Tier 1 — write
     "post_transaction": write.post_transaction,
     "fund_project": write.fund_project,
