@@ -1,3 +1,6 @@
+[settings]
+lockfile = true
+
 [env]
 WORKER_DIR = "{{config_root}}/worker"
 
@@ -43,7 +46,7 @@ run = "container build --pull --target dev -t gnucash-mcp:dev ${WORKER_DIR}"
 
 [tasks.fmt]
 description = "ruff format in dev container (source volume-mounted)"
-depends = ["build-dev"]
+depends = []
 run = """
 container run --rm \
   -v ${WORKER_DIR}/gnucash_mcp:/src/gnucash_mcp:rw \
@@ -56,7 +59,7 @@ container run --rm \
 
 [tasks.lint]
 description = "ruff check + pyright typecheck in dev container (source volume-mounted)"
-depends = ["build-dev", "fmt"]
+depends = ["fmt"]
 run = """
 container run --rm \
   -v ${WORKER_DIR}/gnucash_mcp:/src/gnucash_mcp:rw \
@@ -70,7 +73,7 @@ container run --rm \
 
 [tasks.init-book]
 description = "Initialize GnuCash book in .test-data/"
-depends = ["build-dev"]
+depends = []
 run = """
 container run --rm \
   -v {{config_root}}/.test-data:/data:rw \
@@ -82,7 +85,7 @@ container run --rm \
 
 [tasks.test]
 description = "Run test suite in dev container"
-depends = ["build-dev"]
+depends = []
 run = """
 container run --rm \
   -v {{config_root}}/.test-data:/data:rw \
