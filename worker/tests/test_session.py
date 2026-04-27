@@ -89,7 +89,7 @@ class TestContextManager:
     def test_context_manager_closes_on_exception(self, test_book_path):
         """T1.4.5: book_session() context manager calls close_session() even if exception raised"""
         with pytest.raises(RuntimeError):
-            with book_session(test_book_path, is_new=True) as session:
+            with book_session(test_book_path, is_new=True):
                 raise RuntimeError("Test exception")
 
         # Lock should be cleared even though exception was raised
@@ -114,7 +114,7 @@ class TestDoubleOpen:
         try:
             # Try to open the same book again while locked
             with pytest.raises(GnuCashBackendException) as exc_info:
-                session2 = open_session(test_book_path, is_new=False)
+                open_session(test_book_path, is_new=False)
             # The exception should mention locking
             assert len(exc_info.value.errors) > 0
         finally:

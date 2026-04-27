@@ -66,6 +66,8 @@ container run --rm \
   -v ${WORKER_DIR}/gnucash_mcp:/src/gnucash_mcp:rw \
   -v ${WORKER_DIR}/scripts:/src/scripts:rw \
   -v ${WORKER_DIR}/tests:/src/tests:rw \
+  -v ${WORKER_DIR}/typings:/src/typings:ro \
+  -v ${WORKER_DIR}/pyrightconfig.json:/src/pyrightconfig.json:ro \
   --entrypoint bash \
   gnucash-mcp:dev \
   -c "cd /src && \

@@ -283,8 +283,8 @@ class TestBookResources:
 
         content = expected_chart_resource()
 
-        assert isinstance(content, (str, dict))
+        assert isinstance(content, str)
         # Must include key structural accounts
-        text = content if isinstance(content, str) else str(content)
+        text = content
         assert "Construction" in text
         assert "Liabilities" in text

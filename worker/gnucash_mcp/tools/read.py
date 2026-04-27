@@ -86,7 +86,7 @@ def get_account_balance(account_path: str) -> dict:
         }
 
 
-def list_accounts(parent_path: str = None) -> list:
+def list_accounts(parent_path: str | None = None) -> list:
     """List accounts. If parent_path given, list children of that account; else top-level."""
     with book_session(_book_path()) as session:
         book = session.book
@@ -180,14 +180,6 @@ def get_project_summary() -> dict:
             "total_expenses": bal("Expenses", total=True),
             "total_ap": bal("Liabilities", total=True),
         }
-
-
-def _account_exists(book, path: str) -> bool:
-    try:
-        get_account(book, path)
-        return True
-    except AccountNotFoundError:
-        return False
 
 
 def get_audit_log() -> list:

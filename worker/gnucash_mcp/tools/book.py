@@ -50,20 +50,7 @@ def _get_usd(book):
     return book.get_table().lookup("CURRENCY", "USD")
 
 
-def _account_full_path(acc) -> str:
-    """Return colon-separated path from root down to acc (excluding root itself)."""
-    parts = []
-    current = acc
-    while current.get_parent() is not None and current.get_parent().name != "Root Account":
-        parts.append(current.name)
-        current = current.get_parent()
-    # The root account's name in GnuCash is "Root Account"
-    if current.name != "Root Account":
-        parts.append(current.name)
-    return ":".join(reversed(parts))
-
-
-def _ensure_opening_balances(book) -> object:
+def _ensure_opening_balances(book) -> Account:
     """Return Equity:Opening Balances, creating it if absent."""
     try:
         return get_account(book, _OPENING_BALANCES_PATH)
@@ -313,7 +300,7 @@ def expected_chart_resource() -> str:
 
     def _chart_to_dict(spec: dict) -> dict:
         result = {}
-        for name, (acct_type, description, children) in spec.items():
+        for name, (acct_type, _, children) in spec.items():
             result[name] = {
                 "type": acct_type,
                 **({"children": _chart_to_dict(children)} if children else {}),

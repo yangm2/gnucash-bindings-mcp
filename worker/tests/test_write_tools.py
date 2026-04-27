@@ -116,7 +116,7 @@ class TestReceiveInvoice:
 
         vendors = read.vendors_resource()
         peak = next((v for v in vendors if "Peak" in v["name"]), None)
-        assert peak is not None or len(vendors) >= 0  # Vendor list operation succeeded
+        assert peak is not None
         assert float(peak["balance"]) == 12000.00
 
 
@@ -201,9 +201,9 @@ class TestPostTransaction:
             )
 
         # WAL entry should not be committed
-        pending = wal.pending()
         # Either no entries, or if there is one, it shouldn't be committed
         # (This depends on exception timing; ideally append hasn't been called yet)
+        wal.pending()
 
 
 class TestPostInterest:

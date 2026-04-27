@@ -8,11 +8,12 @@
       "Bash(gh search:*)",
       "Bash(gh issue:*)",
       "WebFetch(domain:ollama.com)",
-      "Bash(mise build:*)",
-      "Bash(mise test:*)",
-      "Bash(mise build-dev:*)",
-      "Bash(mise fmt:*)",
-      "Bash(mise lint:*)"
+      "Bash(mise run build:*)",
+      "Bash(mise run test:*)",
+      "Bash(mise run build-dev:*)",
+      "Bash(mise run fmt:*)",
+      "Bash(mise run lint:*)",
+      "Bash(container run:*)"
     ]
   },
   "enabledPlugins": {

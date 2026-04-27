@@ -24,9 +24,5 @@
   "reportAssertAlwaysTrue": true,
   "reportSelfClsParameterName": true,
   "reportInvalidStringEscapeSequence": true,
-  "ignore": [
-    "**/gnucash_mcp/session.py",
-    "**/gnucash_mcp/tools/*.py",
-    "**/gnucash_mcp/dispatch.py"
-  ]
+  "stubPath": "typings"
 }

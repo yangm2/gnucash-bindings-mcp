@@ -19,7 +19,6 @@ import glob
 from pathlib import Path
 
 from gnucash import Session, SessionOpenMode
-from gnucash import ERR_BACKEND_LOCKED, ERR_FILEIO_FILE_NOT_FOUND  # noqa: F401
 from gnucash import GncNumeric
 
 
@@ -78,7 +77,7 @@ def open_session(path: Path, is_new: bool = False) -> Session:
     return session
 
 
-def close_session(session: Session, path: Path = None) -> None:
+def close_session(session: Session, path: Path | None = None) -> None:
     """Save and end session, releasing the .LCK file."""
     if path is not None:
         _purge_same_second_backup(path)
@@ -164,9 +163,12 @@ def gnc_decimal(amount_str: str) -> GncNumeric:
     except InvalidOperation:
         raise ValueError(f"Invalid decimal amount: {amount_str!r}")
 
-    sign, digits, exponent = d.as_tuple()
+    _, _, exponent = d.as_tuple()
     # exponent is negative for fractional parts: 15000.00 → exponent=-2
     # int() and int(d * N) both preserve sign, so no manual sign flip needed.
+    # InvalidOperation was caught above, so exponent is always int for finite decimals.
+    if not isinstance(exponent, int):
+        raise ValueError(f"Invalid decimal amount: {amount_str!r}")
     if exponent >= 0:
         numerator = int(d)
         denominator = 1

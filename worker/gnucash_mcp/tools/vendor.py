@@ -9,29 +9,29 @@ class VendorHasHistoryError(Exception):
     pass
 
 
-def vendor_add(name, trade=None, expense_category=None):
+def vendor_add(name, trade=None, expense_category=None) -> dict:
     raise NotImplementedError
 
 
-def vendor_list():
+def vendor_list() -> list[dict]:
     raise NotImplementedError
 
 
-def vendor_get_details(name):
+def vendor_get_details(name) -> dict:
     raise NotImplementedError
 
 
-def vendor_rename(old_name, new_name):
+def vendor_rename(old_name, new_name) -> dict:
     raise NotImplementedError
 
 
-def vendor_update(name, trade=None, expense_category=None):
+def vendor_update(name, trade=None, expense_category=None) -> dict:
     raise NotImplementedError
 
 
-def vendor_delete(name, confirm=False):
+def vendor_delete(name, confirm=False) -> dict:
     raise NotImplementedError
 
 
-def vendor_guide_resource():
+def vendor_guide_resource() -> str:
     raise NotImplementedError
