@@ -211,7 +211,29 @@ is a hard guard — not overridable even with `confirm=True`. A vendor paid once
 AP history relevant to year-end reporting. The recommended path for inactive vendors
 is to leave their AP account in place.
 
-**Tests:**
+**Implementation notes (M2.2 complete):**
+
+- Tools are plain functions in `worker/gnucash_mcp/tools/vendor.py`. Tool schemas live in the Swift proxy.
+- Vendor type and expense/trade path are persisted in the AP account's **Description field**:
+  - Trade vendor:        `"trade:Expenses:Construction:Electrical"`
+  - Professional vendor: `"professional:Expenses:Architecture — Acme Architecture"`
+  This makes `vendor_list` and `vendor_get_details` a single-session read with no expense-tree scanning.
+- `vendor_add` is idempotent: checks `{acc.name for acc in liabilities.get_children()}` before
+  creating the AP account, and similarly for the professional expense account.
+- `vendor_update` on a **professional** vendor creates a *new* expense account under the new category
+  and updates the AP description to point to it. The old expense account is left in place so
+  historical transaction balances remain on the original path (T2.2.15). No account rename/move occurs.
+- `vendor_update` on a **trade** vendor just updates the AP description string. The shared trade
+  expense account is never touched.
+- `vendor_rename` on a professional vendor: splits the old expense account name on `" — "` to
+  extract the category prefix, constructs the new name, calls `SetName` on the expense account,
+  then updates the AP description. One session, atomic.
+- `vendor_delete` hard-blocks on `ap_acc.GetSplitList()` even when `confirm=True`. There is no
+  override. Recommended path for inactive vendors: leave in place.
+- `vendor_guide_resource` calls `book_get_account_tree("Expenses:Construction")` to list live trade
+  accounts, so it reflects any accounts added since init (T2.2.23).
+
+**Tests (all 27 pass):**
 ```
 T2.2.1  vendor_add("Pacific Crest Electrical", trade="Construction:Electrical") creates
         only Liabilities:AP — Pacific Crest Electrical; no new expense account created

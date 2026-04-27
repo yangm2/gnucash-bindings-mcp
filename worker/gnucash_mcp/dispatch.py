@@ -1,4 +1,4 @@
-from gnucash_mcp.tools import book, read, write
+from gnucash_mcp.tools import book, read, vendor, write
 import json
 
 HANDLERS = {
@@ -21,6 +21,14 @@ HANDLERS = {
     "book_rename_account": book.book_rename_account,
     "book_move_account": book.book_move_account,
     "book_delete_account": book.book_delete_account,
+    # Tier 2 — vendor management
+    "vendor_add": vendor.vendor_add,
+    "vendor_list": vendor.vendor_list,
+    "vendor_get_details": vendor.vendor_get_details,
+    "vendor_rename": vendor.vendor_rename,
+    "vendor_update": vendor.vendor_update,
+    "vendor_delete": vendor.vendor_delete,
+    "gnucash://vendor-guide": vendor.vendor_guide_resource,
     # Tier 1 — write
     "post_transaction": write.post_transaction,
     "fund_project": write.fund_project,
