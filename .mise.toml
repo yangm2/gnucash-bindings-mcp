@@ -1,40 +1,97 @@
 [env]
 WORKER_DIR = "{{config_root}}/worker"
 
+[tools]
+container = "latest"
+swiftformat = { version = "latest", no_app = "true", rename_exe = "swiftformat" }
+swiftlint = "latest"
+
+# -- container system -- 
+
+[tasks.start-container-system]
+description = "Start container system (if not already running)"
+run = "container system status || container system start"
+
+[tasks.prune-images]
+description = "Prune unused images"
+run = "container image prune --all && container image list"
+
+[tasks.prune-volumes]
+description = "Prune unused volumes"
+run = "container volume prune && container volume list"
+
+[tasks.delete-build-images]
+description = "Delete dev image to force rebuild on next build-dev"
+run = "container image delete --force gnucash-mcp:dev gnucash-mcp:latest"
+
+[tasks.shutdown-container-system]
+description = "Shutdown container system"
+run = "container system stop"
+
 # ── build ─────────────────────────────────────────────────────────────────────
 
 [tasks.build]
 description = "Build prod image (gnucash-mcp:latest)"
-run = "container build -t gnucash-mcp:latest ${WORKER_DIR}"
+run = "container build --pull -t gnucash-mcp:latest ${WORKER_DIR}"
 
 [tasks.build-dev]
 description = "Build dev image (gnucash-mcp:dev) — includes uv/ruff/pyright"
-run = "container build --target dev -t gnucash-mcp:dev ${WORKER_DIR}"
-
-[tasks.build-base]
-description = "Build base image (gnucash-mcp:base)"
-run = "container build --target base -t gnucash-mcp:base ${WORKER_DIR}"
+depends = ["start-container-system"]
+run = "container build --pull --target dev -t gnucash-mcp:dev ${WORKER_DIR}"
 
 # ── dev tools ─────────────────────────────────────────────────────────────────
 
-[tasks.lint]
-description = "ruff check + pyright typecheck in dev container (source volume-mounted)"
-run = """
-container run --rm \
-  -v ${WORKER_DIR}:/src:ro \
-  --entrypoint bash \
-  gnucash-mcp:dev \
-  -c "cd /src && ruff check --no-cache gnucash_mcp scripts && pyright gnucash_mcp"
-"""
-
 [tasks.fmt]
 description = "ruff format in dev container (source volume-mounted)"
+depends = ["build-dev"]
 run = """
 container run --rm \
   -v ${WORKER_DIR}/gnucash_mcp:/src/gnucash_mcp:rw \
   -v ${WORKER_DIR}/scripts:/src/scripts:rw \
+  --entrypoint bash \
   gnucash-mcp:dev \
-  bash -c "cd /src && ruff format gnucash_mcp scripts"
+  -c "cd /src && \
+  uv run ruff format gnucash_mcp scripts"
+"""
+
+[tasks.lint]
+description = "ruff check + pyright typecheck in dev container (source volume-mounted)"
+depends = ["build-dev", "fmt"]
+run = """
+container run --rm \
+  -v ${WORKER_DIR}/gnucash_mcp:/src/gnucash_mcp:rw \
+  -v ${WORKER_DIR}/scripts:/src/scripts:rw \
+  --entrypoint bash \
+  gnucash-mcp:dev \
+  -c "cd /src && \
+    uv run ruff check --fix --no-cache gnucash_mcp scripts && \
+    uv run pyright gnucash_mcp scripts"
+"""
+
+[tasks.init-book]
+description = "Initialize GnuCash book in .test-data/"
+depends = ["build-dev"]
+run = """
+container run --rm \
+  -v {{config_root}}/.test-data:/data:rw \
+  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
+  --entrypoint python3 \
+  gnucash-mcp:latest \
+  /src/scripts/init_book.py
+"""
+
+[tasks.test]
+description = "Run test suite in dev container"
+depends = ["build-dev"]
+run = """
+container run --rm \
+  -v {{config_root}}/.test-data:/data:rw \
+  -v ${WORKER_DIR}/gnucash_mcp:/src/gnucash_mcp:ro \
+  -v ${WORKER_DIR}/tests:/src/tests:ro \
+  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
+  --entrypoint bash \
+  gnucash-mcp:dev \
+  -c "cd /src && uv run --active --frozen pytest tests/ -v"
 """
 
 # ── runtime ───────────────────────────────────────────────────────────────────
@@ -60,6 +117,7 @@ container run --rm -it \
 
 [tasks.shell-dev]
 description = "Interactive shell in dev container with source mounted rw"
+depends = ["build-dev"]
 run = """
 container run --rm -it \
   -v {{config_root}}/.test-data:/data:rw \
@@ -70,31 +128,12 @@ container run --rm -it \
   gnucash-mcp:dev
 """
 
-[tasks.init-book]
-description = "Initialize GnuCash book in .test-data/"
-run = """
-container run --rm \
-  -v {{config_root}}/.test-data:/data:rw \
-  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
-  --entrypoint python3 \
-  gnucash-mcp:latest \
-  /src/scripts/init_book.py
-"""
-
-[tasks.test]
-description = "Run test suite in dev container"
-depends = ["build-dev"]
-run = """
-container run --rm \
-  -v {{config_root}}/.test-data:/data:rw \
-  -v ${WORKER_DIR}/gnucash_mcp:/src/gnucash_mcp:ro \
-  -v ${WORKER_DIR}/tests:/src/tests:ro \
-  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
-  --entrypoint bash \
-  gnucash-mcp:dev \
-  -c "cd /src && uv run --active --frozen pytest tests/ -v"
-"""
-
 [tasks.clean]
 description = "Remove ephemeral test data"
 run = "rm -f {{config_root}}/.test-data/*.gnucash* {{config_root}}/.test-data/*.jsonl"
+
+[tasks.cleaner]
+description = "Clean all build artifacts and test data (images, volumes, etc.)"
+depends = ["delete-build-images", "clean"]
+
+
