@@ -18,6 +18,17 @@
   "enabledPlugins": {
     "code-simplifier@claude-plugins-official": true,
     "hookify@claude-plugins-official": true,
-    "swift-lsp@claude-plugins-official": true
+    "swift-lsp@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true,
+    "mcp-server-dev@claude-plugins-official": true,
+    "finance@knowledge-work-plugins": true
+  },
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "network": {
+      "allowedDomains": []
+    }
   }
 }
