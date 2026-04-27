@@ -1,12 +1,9 @@
 """Tests for read tools — T1.5.x"""
 
 import os
-from decimal import Decimal
 
-import pytest
 
 from gnucash_mcp.tools import read
-from gnucash_mcp.session import book_session, get_account
 from gnucash_mcp.tools.write import fund_project
 from gnucash_mcp import wal
 
@@ -115,7 +112,7 @@ class TestReadToolsBasics:
         # Post three transactions
         dates = [TEST_DATE_4, TEST_DATE_3, TEST_DATE_2]
         for i in range(1, 4):
-            fund_project(dates[i - 1], f"{i*1000}.00", f"Fund {i}")
+            fund_project(dates[i - 1], f"{i * 1000}.00", f"Fund {i}")
 
         result = read.list_transactions("Assets:Project Checking", limit=2)
         assert len(result) == 2
@@ -155,8 +152,11 @@ class TestReadToolsBasics:
         assert isinstance(result, dict)
         # All fields should be present
         required_fields = {
-            "checking_balance", "owner_capital",
-            "interest_income", "total_expenses", "total_ap"
+            "checking_balance",
+            "owner_capital",
+            "interest_income",
+            "total_expenses",
+            "total_ap",
         }
         assert set(result.keys()) == required_fields
 
@@ -216,8 +216,11 @@ class TestReadToolsBasics:
 
         # Create an invoice
         receive_invoice(
-            TEST_DATE_5, "Acme Architecture", "AAI-001",
-            "15000.00", "Expenses:Architecture — Acme Architecture"
+            TEST_DATE_5,
+            "Acme Architecture",
+            "AAI-001",
+            "15000.00",
+            "Expenses:Architecture — Acme Architecture",
         )
 
         result = read.vendors_resource()

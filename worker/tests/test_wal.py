@@ -2,9 +2,7 @@
 
 import json
 import time
-from pathlib import Path
 
-import pytest
 
 from gnucash_mcp import wal
 
@@ -165,8 +163,13 @@ class TestWALTransactionGUID:
         # Verify types
         assert isinstance(entry["id"], str)
         assert isinstance(entry["logged_at"], str)
-        assert entry["type"] in ["fund_project", "receive_invoice", "pay_invoice",
-                                 "post_transaction", "post_interest"]
+        assert entry["type"] in [
+            "fund_project",
+            "receive_invoice",
+            "pay_invoice",
+            "post_transaction",
+            "post_interest",
+        ]
         assert isinstance(entry["payload"], dict)
         assert entry["committed_at"] is None  # Initially
         assert entry["transaction_guid"] is None  # Initially

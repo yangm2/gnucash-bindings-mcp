@@ -1,16 +1,18 @@
 """Tests for write tools — T1.6.x"""
 
 import os
-from decimal import Decimal
 
 import pytest
 
 from gnucash_mcp.tools.write import (
-    fund_project, receive_invoice, pay_invoice, post_transaction,
-    post_interest, SplitsImbalanceError
+    fund_project,
+    receive_invoice,
+    pay_invoice,
+    post_transaction,
+    post_interest,
+    SplitsImbalanceError,
 )
 from gnucash_mcp.tools import read
-from gnucash_mcp.session import book_session, get_account
 from gnucash_mcp import wal
 
 
@@ -83,8 +85,11 @@ class TestReceiveInvoice:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         result = receive_invoice(
-            TEST_DATE_5, "Acme Architecture", "AAI-101",
-            "15000.00", "Expenses:Architecture — Acme Architecture"
+            TEST_DATE_5,
+            "Acme Architecture",
+            "AAI-101",
+            "15000.00",
+            "Expenses:Architecture — Acme Architecture",
         )
 
         assert result["status"] == "ok"
@@ -102,8 +107,11 @@ class TestReceiveInvoice:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         receive_invoice(
-            TEST_DATE_5, "Peak Structural", "PS-1",
-            "12000.00", "Expenses:Structural Engineering — Peak Structural"
+            TEST_DATE_5,
+            "Peak Structural",
+            "PS-1",
+            "12000.00",
+            "Expenses:Structural Engineering — Peak Structural",
         )
 
         vendors = read.vendors_resource()
@@ -125,8 +133,11 @@ class TestPayInvoice:
 
         # Receive invoice
         invoice_result = receive_invoice(
-            TEST_DATE_5, "Acme Architecture", "AAI-101",
-            "15000.00", "Expenses:Architecture — Acme Architecture"
+            TEST_DATE_5,
+            "Acme Architecture",
+            "AAI-101",
+            "15000.00",
+            "Expenses:Architecture — Acme Architecture",
         )
         assert invoice_result["status"] == "ok"
 
@@ -148,11 +159,12 @@ class TestPostTransaction:
         os.environ["GNUCASH_BOOK_PATH"] = str(initialized_book)
 
         result = post_transaction(
-            TEST_DATE_5, "Transfer test",
+            TEST_DATE_5,
+            "Transfer test",
             [
                 {"account_path": "Assets:Project Checking", "amount": "5000.00", "memo": "In"},
                 {"account_path": "Equity:Owner Capital", "amount": "-5000.00", "memo": "Out"},
-            ]
+            ],
         )
 
         assert result["status"] == "ok"
@@ -164,11 +176,12 @@ class TestPostTransaction:
 
         with pytest.raises(SplitsImbalanceError):
             post_transaction(
-                TEST_DATE_5, "Unbalanced",
+                TEST_DATE_5,
+                "Unbalanced",
                 [
                     {"account_path": "Assets:Project Checking", "amount": "100.00"},
                     {"account_path": "Equity:Owner Capital", "amount": "-50.00"},
-                ]
+                ],
             )
 
     def test_post_transaction_unbalanced_not_posted(self, initialized_book, test_wal_path):
@@ -179,11 +192,12 @@ class TestPostTransaction:
 
         with pytest.raises(SplitsImbalanceError):
             post_transaction(
-                TEST_DATE_5, "Bad",
+                TEST_DATE_5,
+                "Bad",
                 [
                     {"account_path": "Assets:Project Checking", "amount": "100.00"},
                     {"account_path": "Equity:Owner Capital", "amount": "-25.00"},
-                ]
+                ],
             )
 
         # WAL entry should not be committed
@@ -239,8 +253,11 @@ class TestCompleteInvoiceWorkflow:
 
         # Receive invoice
         invoice_result = receive_invoice(
-            TEST_DATE_5, "Acme Architecture", "AAI-101",
-            "15000.00", "Expenses:Architecture — Acme Architecture"
+            TEST_DATE_5,
+            "Acme Architecture",
+            "AAI-101",
+            "15000.00",
+            "Expenses:Architecture — Acme Architecture",
         )
         assert invoice_result["status"] == "ok"
 
@@ -264,8 +281,11 @@ class TestCompleteInvoiceWorkflow:
 
         # Receive invoice
         invoice_result = receive_invoice(
-            TEST_DATE_3, "Peak Structural", "PSE-000101",
-            "2000.00", "Expenses:Structural Engineering — Peak Structural"
+            TEST_DATE_3,
+            "Peak Structural",
+            "PSE-000101",
+            "2000.00",
+            "Expenses:Structural Engineering — Peak Structural",
         )
         assert invoice_result["status"] == "ok"
 
@@ -290,8 +310,18 @@ class TestCompleteInvoiceWorkflow:
         invoices = [
             ("Acme Architecture", "AAI-101", "15000.00", "Architecture — Acme Architecture"),
             ("Acme Architecture", "AAI-102", "25000.00", "Architecture — Acme Architecture"),
-            ("Peak Structural", "PSE-000101", "2000.00", "Structural Engineering — Peak Structural"),
-            ("Peak Structural", "PSE-000102", "1200.00", "Structural Engineering — Peak Structural"),
+            (
+                "Peak Structural",
+                "PSE-000101",
+                "2000.00",
+                "Structural Engineering — Peak Structural",
+            ),
+            (
+                "Peak Structural",
+                "PSE-000102",
+                "1200.00",
+                "Structural Engineering — Peak Structural",
+            ),
             ("Meridian MEP", "MMEP-2001", "600.00", "MEP Consulting — Meridian MEP"),
             ("Meridian MEP", "MMEP-2002", "600.00", "MEP Consulting — Meridian MEP"),
             ("Meridian MEP", "MMEP-2003", "480.00", "MEP Consulting — Meridian MEP"),
@@ -301,8 +331,7 @@ class TestCompleteInvoiceWorkflow:
         # Post all invoices
         for vendor, invoice_ref, amount, expense_account in invoices:
             result = receive_invoice(
-                TEST_DATE_5, vendor, invoice_ref,
-                amount, f"Expenses:{expense_account}"
+                TEST_DATE_5, vendor, invoice_ref, amount, f"Expenses:{expense_account}"
             )
             assert result["status"] == "ok"
 
@@ -310,5 +339,13 @@ class TestCompleteInvoiceWorkflow:
         summary = read.get_project_summary()
         assert isinstance(summary, dict)
         # All expected fields present
-        assert all(key in summary for key in
-                  ["checking_balance", "owner_capital", "interest_income", "total_expenses", "total_ap"])
+        assert all(
+            key in summary
+            for key in [
+                "checking_balance",
+                "owner_capital",
+                "interest_income",
+                "total_expenses",
+                "total_ap",
+            ]
+        )

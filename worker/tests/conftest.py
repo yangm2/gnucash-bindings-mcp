@@ -1,8 +1,7 @@
-"""Pytest configuration and fixtures for Phase 1 tests."""
+"""Pytest configuration and fixtures for gnucash_mcp tests."""
 
 import os
 import pytest
-import tempfile
 from pathlib import Path
 from shutil import rmtree
 
@@ -76,8 +75,7 @@ def initialized_book(test_book_path, test_wal_path):
 
         expenses = create_account(root, "Expenses", gc.ACCT_TYPE_EXPENSE)
         create_account(expenses, "Architecture — Acme Architecture", gc.ACCT_TYPE_EXPENSE)
-        create_account(expenses, "Structural Engineering — Peak Structural",
-                      gc.ACCT_TYPE_EXPENSE)
+        create_account(expenses, "Structural Engineering — Peak Structural", gc.ACCT_TYPE_EXPENSE)
         create_account(expenses, "MEP Consulting — Meridian MEP", gc.ACCT_TYPE_EXPENSE)
         create_account(expenses, "HVAC Engineering — Summit HVAC", gc.ACCT_TYPE_EXPENSE)
 
@@ -98,3 +96,33 @@ def reset_wal():
     wal._wal_path = None
     yield
     wal._wal_path = None
+
+
+@pytest.fixture
+def full_book(test_book_path, test_wal_path):
+    """Book initialized with the full MC-6 chart (used by Phase 2 tests).
+
+    Includes Construction:*, Change Orders:*, and professional fee accounts, but
+    no pre-existing AP accounts beyond the four initial vendors from the project
+    charter.  Tests that need a clean vendor slate should add uniquely-named
+    vendors rather than reusing Acme / Peak / Meridian / Summit.
+    """
+    from gnucash_mcp.chart import CHART, ensure_subtree
+
+    os.environ["GNUCASH_BOOK_PATH"] = str(test_book_path)
+    os.environ["GNUCASH_WAL_PATH"] = str(test_wal_path)
+    wal.init(test_wal_path)
+
+    with book_session(test_book_path, is_new=True) as session:
+        book = session.book
+        root = book.get_root_account()
+        ensure_subtree(book, root, CHART)
+
+    yield test_book_path
+
+    for suffix in ("", ".LCK"):
+        p = Path(str(test_book_path) + suffix)
+        if p.exists():
+            p.unlink()
+    if test_wal_path.exists():
+        test_wal_path.unlink()

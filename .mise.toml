@@ -51,10 +51,11 @@ run = """
 container run --rm \
   -v ${WORKER_DIR}/gnucash_mcp:/src/gnucash_mcp:rw \
   -v ${WORKER_DIR}/scripts:/src/scripts:rw \
+  -v ${WORKER_DIR}/tests:/src/tests:rw \
   --entrypoint bash \
   gnucash-mcp:dev \
   -c "cd /src && \
-  uv run ruff format gnucash_mcp scripts"
+  uv run ruff format gnucash_mcp scripts tests"
 """
 
 [tasks.lint]
@@ -64,11 +65,12 @@ run = """
 container run --rm \
   -v ${WORKER_DIR}/gnucash_mcp:/src/gnucash_mcp:rw \
   -v ${WORKER_DIR}/scripts:/src/scripts:rw \
+  -v ${WORKER_DIR}/tests:/src/tests:rw \
   --entrypoint bash \
   gnucash-mcp:dev \
   -c "cd /src && \
-    uv run ruff check --fix --no-cache gnucash_mcp scripts && \
-    uv run pyright gnucash_mcp scripts"
+    uv run ruff check --fix --no-cache gnucash_mcp scripts tests && \
+    uv run pyright gnucash_mcp scripts tests"
 """
 
 [tasks.init-book]
@@ -90,6 +92,7 @@ run = """
 container run --rm \
   -v {{config_root}}/.test-data:/data:rw \
   -v ${WORKER_DIR}/gnucash_mcp:/src/gnucash_mcp:ro \
+  -v ${WORKER_DIR}/scripts:/src/scripts:ro \
   -v ${WORKER_DIR}/tests:/src/tests:ro \
   -e GNUCASH_BOOK_PATH=/data/project.gnucash \
   --entrypoint bash \
