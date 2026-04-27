@@ -27,54 +27,82 @@ import gnucash.gnucash_core_c as gc
 # Leaf values: (account_type_int, description | None)
 # Dict values: (account_type_int, description | None, children_dict)
 
-ASSET    = gc.ACCT_TYPE_ASSET
-BANK     = gc.ACCT_TYPE_BANK
-LIAB     = gc.ACCT_TYPE_LIABILITY
-PAYABLE  = gc.ACCT_TYPE_PAYABLE
-EQUITY   = gc.ACCT_TYPE_EQUITY
-INCOME   = gc.ACCT_TYPE_INCOME
-EXPENSE  = gc.ACCT_TYPE_EXPENSE
+ASSET = gc.ACCT_TYPE_ASSET
+BANK = gc.ACCT_TYPE_BANK
+LIAB = gc.ACCT_TYPE_LIABILITY
+PAYABLE = gc.ACCT_TYPE_PAYABLE
+EQUITY = gc.ACCT_TYPE_EQUITY
+INCOME = gc.ACCT_TYPE_INCOME
+EXPENSE = gc.ACCT_TYPE_EXPENSE
 
 # (type, description, children)  — children is None for leaf accounts
 CHART = {
-    "Assets": (ASSET, None, {
-        "Project Checking": (BANK, "First Project Bank", None),
-    }),
-    "Liabilities": (LIAB, None, {
-        "AP — Acme Architecture":  (PAYABLE, None, None),
-        "AP — Peak Structural":    (PAYABLE, None, None),
-        "AP — Meridian MEP":       (PAYABLE, None, None),
-        "AP — Summit HVAC":        (PAYABLE, None, None),
-    }),
-    "Equity": (EQUITY, None, {
-        "Owner Capital": (EQUITY, "First Project Bank", None),
-    }),
-    "Income": (INCOME, None, {
-        "Interest Income": (INCOME, "Project Account", None),
-    }),
-    "Expenses": (EXPENSE, None, {
-        "Architecture — Acme Architecture":      (EXPENSE, None, None),
-        "Structural Engineering — Peak Structural": (EXPENSE, None, None),
-        "MEP Consulting — Meridian MEP":         (EXPENSE, None, None),
-        "HVAC Engineering — Summit HVAC":        (EXPENSE, None, None),
-        "Permits and Fees":                      (EXPENSE, None, None),
-        "Construction": (EXPENSE, None, {
-            "Demo":             (EXPENSE, None, None),
-            "Framing":          (EXPENSE, None, None),
-            "Electrical":       (EXPENSE, None, None),
-            "Plumbing":         (EXPENSE, None, None),
-            "HVAC":             (EXPENSE, None, None),
-            "Tile":             (EXPENSE, None, None),
-            "Finish Carpentry": (EXPENSE, None, None),
-            "Painting":         (EXPENSE, None, None),
-            "Contractor Fee":   (EXPENSE, None, None),
-        }),
-        "Change Orders": (EXPENSE, None, {
-            "Demo":       (EXPENSE, None, None),
-            "Electrical": (EXPENSE, None, None),
-            "New Scope":  (EXPENSE, None, None),
-        }),
-    }),
+    "Assets": (
+        ASSET,
+        None,
+        {
+            "Project Checking": (BANK, "First Project Bank", None),
+        },
+    ),
+    "Liabilities": (
+        LIAB,
+        None,
+        {
+            "AP — Acme Architecture": (PAYABLE, None, None),
+            "AP — Peak Structural": (PAYABLE, None, None),
+            "AP — Meridian MEP": (PAYABLE, None, None),
+            "AP — Summit HVAC": (PAYABLE, None, None),
+        },
+    ),
+    "Equity": (
+        EQUITY,
+        None,
+        {
+            "Owner Capital": (EQUITY, "First Project Bank", None),
+        },
+    ),
+    "Income": (
+        INCOME,
+        None,
+        {
+            "Interest Income": (INCOME, "Project Account", None),
+        },
+    ),
+    "Expenses": (
+        EXPENSE,
+        None,
+        {
+            "Architecture — Acme Architecture": (EXPENSE, None, None),
+            "Structural Engineering — Peak Structural": (EXPENSE, None, None),
+            "MEP Consulting — Meridian MEP": (EXPENSE, None, None),
+            "HVAC Engineering — Summit HVAC": (EXPENSE, None, None),
+            "Permits and Fees": (EXPENSE, None, None),
+            "Construction": (
+                EXPENSE,
+                None,
+                {
+                    "Demo": (EXPENSE, None, None),
+                    "Framing": (EXPENSE, None, None),
+                    "Electrical": (EXPENSE, None, None),
+                    "Plumbing": (EXPENSE, None, None),
+                    "HVAC": (EXPENSE, None, None),
+                    "Tile": (EXPENSE, None, None),
+                    "Finish Carpentry": (EXPENSE, None, None),
+                    "Painting": (EXPENSE, None, None),
+                    "Contractor Fee": (EXPENSE, None, None),
+                },
+            ),
+            "Change Orders": (
+                EXPENSE,
+                None,
+                {
+                    "Demo": (EXPENSE, None, None),
+                    "Electrical": (EXPENSE, None, None),
+                    "New Scope": (EXPENSE, None, None),
+                },
+            ),
+        },
+    ),
 }
 
 
@@ -154,6 +182,7 @@ def main():
         sys.exit(1)
     except Exception:
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

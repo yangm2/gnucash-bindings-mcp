@@ -65,8 +65,7 @@ def open_session(path: Path, is_new: bool = False) -> Session:
     to distinguish stale from live locks, so we leave .LCK management to it.
     """
     path = Path(path)
-    mode = (SessionOpenMode.SESSION_NEW_STORE if is_new
-            else SessionOpenMode.SESSION_NORMAL_OPEN)
+    mode = SessionOpenMode.SESSION_NEW_STORE if is_new else SessionOpenMode.SESSION_NORMAL_OPEN
     session = Session(f"xml://{path}", mode)
 
     if is_new:

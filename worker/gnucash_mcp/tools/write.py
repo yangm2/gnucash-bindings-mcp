@@ -74,13 +74,17 @@ def post_transaction(date: str, description: str, splits: list) -> dict:
     total = sum(Decimal(s["amount"]) for s in splits)
     if total != 0:
         raise SplitsImbalanceError(
-            f"Splits must sum to zero; got {total}. "
-            f"Amounts: {[s['amount'] for s in splits]}"
+            f"Splits must sum to zero; got {total}. Amounts: {[s['amount'] for s in splits]}"
         )
 
-    entry = wal.append("post_transaction", {
-        "date": date, "description": description, "splits": splits,
-    })
+    entry = wal.append(
+        "post_transaction",
+        {
+            "date": date,
+            "description": description,
+            "splits": splits,
+        },
+    )
 
     with book_session(_book_path()) as session:
         txn, guid = _post_transaction(session.book, date, description, splits)
@@ -100,9 +104,7 @@ def fund_project(date: str, amount: str, memo: str = "") -> dict:
 
     with book_session(_book_path()) as session:
         txn, guid = _post_transaction(
-            session.book, date,
-            f"Fund project{': ' + memo if memo else ''}",
-            splits
+            session.book, date, f"Fund project{': ' + memo if memo else ''}", splits
         )
         _stamp_slots(txn, entry, "fund_project")
 
@@ -110,18 +112,25 @@ def fund_project(date: str, amount: str, memo: str = "") -> dict:
     return {"status": "ok", "transaction_guid": guid, "wal_id": entry["id"]}
 
 
-def receive_invoice(date: str, vendor: str, invoice_ref: str,
-                    amount: str, expense_account: str) -> dict:
+def receive_invoice(
+    date: str, vendor: str, invoice_ref: str, amount: str, expense_account: str
+) -> dict:
     """Debit expense account, credit AP — vendor."""
     ap_account = f"Liabilities:AP — {vendor}"
     splits = [
         {"account_path": expense_account, "amount": amount, "memo": invoice_ref},
         {"account_path": ap_account, "amount": f"-{amount}", "memo": invoice_ref},
     ]
-    entry = wal.append("receive_invoice", {
-        "date": date, "vendor": vendor, "invoice_ref": invoice_ref,
-        "amount": amount, "expense_account": expense_account,
-    })
+    entry = wal.append(
+        "receive_invoice",
+        {
+            "date": date,
+            "vendor": vendor,
+            "invoice_ref": invoice_ref,
+            "amount": amount,
+            "expense_account": expense_account,
+        },
+    )
 
     with book_session(_book_path()) as session:
         txn, guid = _post_transaction(
@@ -140,9 +149,15 @@ def pay_invoice(date: str, vendor: str, invoice_ref: str, amount: str) -> dict:
         {"account_path": ap_account, "amount": amount, "memo": invoice_ref},
         {"account_path": "Assets:Project Checking", "amount": f"-{amount}", "memo": invoice_ref},
     ]
-    entry = wal.append("pay_invoice", {
-        "date": date, "vendor": vendor, "invoice_ref": invoice_ref, "amount": amount,
-    })
+    entry = wal.append(
+        "pay_invoice",
+        {
+            "date": date,
+            "vendor": vendor,
+            "invoice_ref": invoice_ref,
+            "amount": amount,
+        },
+    )
 
     with book_session(_book_path()) as session:
         txn, guid = _post_transaction(
@@ -161,17 +176,17 @@ def post_interest(month: str, amount: str) -> dict:
     """
     date = f"{month}-01" if len(month) == 7 else month
     splits = [
-        {"account_path": "Assets:Project Checking", "amount": amount,
-         "memo": f"Interest {month}"},
-        {"account_path": "Income:Interest Income", "amount": f"-{amount}",
-         "memo": f"Interest {month}"},
+        {"account_path": "Assets:Project Checking", "amount": amount, "memo": f"Interest {month}"},
+        {
+            "account_path": "Income:Interest Income",
+            "amount": f"-{amount}",
+            "memo": f"Interest {month}",
+        },
     ]
     entry = wal.append("post_interest", {"month": month, "amount": amount})
 
     with book_session(_book_path()) as session:
-        txn, guid = _post_transaction(
-            session.book, date, f"Interest income — {month}", splits
-        )
+        txn, guid = _post_transaction(session.book, date, f"Interest income — {month}", splits)
         _stamp_slots(txn, entry, "post_interest")
 
     wal.mark_committed(entry["id"], transaction_guid=guid)

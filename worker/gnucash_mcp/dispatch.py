@@ -3,20 +3,20 @@ import json
 
 HANDLERS = {
     # Tier 1 — read
-    "get_account_balance":  read.get_account_balance,
-    "list_accounts":        read.list_accounts,
-    "list_transactions":    read.list_transactions,
-    "get_transaction":      read.get_transaction,
-    "get_project_summary":  read.get_project_summary,
-    "get_audit_log":        read.get_audit_log,     # reads WAL, no GnuCash session
-    "__unlock_ledger__":    read.unlock_ledger,
-    "gnucash://vendors":    read.vendors_resource,  # dynamic resource
+    "get_account_balance": read.get_account_balance,
+    "list_accounts": read.list_accounts,
+    "list_transactions": read.list_transactions,
+    "get_transaction": read.get_transaction,
+    "get_project_summary": read.get_project_summary,
+    "get_audit_log": read.get_audit_log,  # reads WAL, no GnuCash session
+    "__unlock_ledger__": read.unlock_ledger,
+    "gnucash://vendors": read.vendors_resource,  # dynamic resource
     # Tier 1 — write
-    "post_transaction":     write.post_transaction,
-    "fund_project":         write.fund_project,
-    "receive_invoice":      write.receive_invoice,
-    "pay_invoice":          write.pay_invoice,
-    "post_interest":        write.post_interest,
+    "post_transaction": write.post_transaction,
+    "fund_project": write.fund_project,
+    "receive_invoice": write.receive_invoice,
+    "pay_invoice": write.pay_invoice,
+    "post_interest": write.post_interest,
 }
 
 

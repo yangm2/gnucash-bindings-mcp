@@ -7,7 +7,13 @@ suitable for JSON serialization.  Book path from GNUCASH_BOOK_PATH env var.
 import os
 from pathlib import Path
 
-from gnucash_mcp.session import book_session, get_account, get_txn_isodate, account_balance_float, AccountNotFoundError
+from gnucash_mcp.session import (
+    book_session,
+    get_account,
+    get_txn_isodate,
+    account_balance_float,
+    AccountNotFoundError,
+)
 from gnucash_mcp import wal
 
 
@@ -35,6 +41,7 @@ def _balance_str(gnc_numeric) -> str:
 def _acc_to_dict(acc) -> dict:
     """Serialize an Account to a minimal dict."""
     import gnucash.gnucash_core_c as gc
+
     acct_type = acc.GetType()
     type_str = gc.xaccAccountGetTypeStr(acct_type)
     return {
@@ -111,18 +118,21 @@ def list_transactions(account_path: str, limit: int = 20) -> list:
         result = []
         for split in splits:
             txn = split.GetParent()
-            result.append({
-                "guid": txn.GetGUID().to_string(),
-                "date": get_txn_isodate(txn) if txn.GetDate() else None,
-                "description": txn.GetDescription(),
-                "amount": _balance_str(split.GetAmount()),
-                "memo": split.GetMemo(),
-            })
+            result.append(
+                {
+                    "guid": txn.GetGUID().to_string(),
+                    "date": get_txn_isodate(txn) if txn.GetDate() else None,
+                    "description": txn.GetDescription(),
+                    "amount": _balance_str(split.GetAmount()),
+                    "memo": split.GetMemo(),
+                }
+            )
         return result
 
 
 def _find_txn_by_guid(book, guid_str: str):
     """Walk all accounts recursively to find a transaction by GUID string."""
+
     def _walk(acc):
         for split in acc.GetSplitList():
             txn = split.GetParent()
@@ -133,6 +143,7 @@ def _find_txn_by_guid(book, guid_str: str):
             if result is not None:
                 return result
         return None
+
     return _walk(book.get_root_account())
 
 
@@ -192,11 +203,17 @@ def unlock_ledger() -> dict:
         "book": str(_book_path()),
         "tool_groups": {
             "operational": [
-                "receive_invoice", "pay_invoice", "fund_project",
-                "post_interest", "post_transaction",
-                "get_account_balance", "list_accounts",
-                "list_transactions", "get_transaction",
-                "get_project_summary", "get_audit_log",
+                "receive_invoice",
+                "pay_invoice",
+                "fund_project",
+                "post_interest",
+                "post_transaction",
+                "get_account_balance",
+                "list_accounts",
+                "list_transactions",
+                "get_transaction",
+                "get_project_summary",
+                "get_audit_log",
             ],
         },
     }
@@ -214,9 +231,11 @@ def vendors_resource() -> list:
         vendors = []
         for acc in liabilities.get_children():
             if acc.name.startswith("AP — "):
-                vendors.append({
-                    "name": acc.name[5:],  # strip "AP — " prefix
-                    "account": acc.name,
-                    "balance": f"{account_balance_float(acc, negate=True):.2f}",
-                })
+                vendors.append(
+                    {
+                        "name": acc.name[5:],  # strip "AP — " prefix
+                        "account": acc.name,
+                        "balance": f"{account_balance_float(acc, negate=True):.2f}",
+                    }
+                )
         return vendors
