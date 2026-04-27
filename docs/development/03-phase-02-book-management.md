@@ -67,7 +67,26 @@ def book_delete_account(
     deletion is permanent and cannot be undone via MCP."""
 ```
 
-**Tests:**
+**Implementation notes (M2.1 complete):**
+
+- Tools are plain functions in `worker/gnucash_mcp/tools/book.py` — no `@app.tool()` decorator.
+  Tool schemas live in the Swift proxy (compiled in); Python only implements logic.
+- `book_get_account_tree` returns a **flat list** of direct children (not nested). Pass `""` for root.
+- `book_delete_account` uses `acc.Destroy()` (maps to C `xaccAccountDestroy`), which marks the
+  QOF instance dirty and persists reliably. `parent.remove_child(acc)` alone does **not** persist
+  deletions across separate sessions — do not use it for this purpose.
+- `book_verify_structure` uses set-difference between `_expected_paths(CHART)` and `_live_paths(root)`.
+  Both helpers build colon-separated path strings recursively.
+- `book_set_opening_balance` auto-creates `Equity:Opening Balances` via `_ensure_opening_balances()`
+  if absent. WAL entry written before session opens; marked committed after `session.end()`.
+- The MC-6 `CHART` dict lives in `gnucash_mcp/chart.py` (not `scripts/`). Both `init_book.py`
+  and `book_verify_structure` import from there — single source of truth.
+- `scripts/init_book.py` was refactored to import `CHART`, `ensure_subtree`, `count_accounts`
+  from `gnucash_mcp.chart` (they were previously duplicated inline).
+- Test fixture `full_book` (in `conftest.py`) calls `ensure_subtree(book, root, CHART)` to build
+  the canonical chart. Do not use `initialized_book` for M2.x tests — it only has the minimal chart.
+
+**Tests (all 17 pass):**
 ```
 T2.1.1  book_add_account creates account at correct path in hierarchy
 T2.1.2  book_add_account with non-existent parent_path raises AccountNotFoundError
@@ -75,11 +94,13 @@ T2.1.3  book_add_account with invalid account_type raises ValueError
 T2.1.4  book_add_account is idempotent: running with same args twice does not duplicate
 T2.1.5  book_get_account_tree("Liabilities") returns all AP accounts
 T2.1.6  book_verify_structure returns ok:true on a correctly-initialized book
-T2.1.7  book_verify_structure returns missing accounts after one is removed (test fixture)
+T2.1.7  book_verify_structure returns missing accounts after one is removed
+         — fixture calls book_delete_account("Expenses:Construction:Demo"), not remove_child
 T2.1.8  book_set_opening_balance creates a balanced transaction with equity offset
 T2.1.9  book_rename_account updates account name; existing transactions still resolve
 T2.1.10 book_move_account moves account to new parent; full path reflects new location
 T2.1.11 book_delete_account fails on account with transactions when require_zero_balance=True
+         — test seeds the account via post_transaction (not receive_invoice; PCE has no AP in full_book)
 T2.1.12 book_delete_account succeeds on empty account; account absent from tree after
 T2.1.13 Resource gnucash://book-setup-guide is non-empty and contains "account_type"
 T2.1.14 Claude fetches gnucash://book-setup-guide before calling book_add_account
