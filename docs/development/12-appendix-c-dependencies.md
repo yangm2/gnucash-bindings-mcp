@@ -5,13 +5,13 @@
 | Component | Version | Source |
 |---|---|---|
 | macOS | 26 Tahoe | System |
-| Swift toolchain | 6.2 (Xcode-bundled) | Xcode 26+ — must NOT use swift.org toolchain |
-| `apple/container` | 0.10.0+ | github.com/apple/container |
+| Swift toolchain | 6.3 (Xcode-bundled) | Xcode 26+ — must NOT use swift.org toolchain |
+| `apple/container` | 0.11.0+ | github.com/apple/container |
 | `apple/swift-argument-parser` | 1.5.0+ | github.com/apple/swift-argument-parser |
 | `apple/swift-nio` | 2.x | github.com/apple/swift-nio |
 
 **Swift toolchain note:** macOS 26 system frameworks (Virtualization.framework,
-`ContainerAPIClient`) require the Xcode-bundled Swift 6.2 toolchain. Do not use
+`ContainerAPIClient`) require the Xcode-bundled Swift 6.3 toolchain. Do not use
 the swift.org standalone toolchain — it will fail to link against system frameworks.
 This matches the requirement in `buck2-macos-local-reapi`.
 
@@ -19,13 +19,13 @@ This matches the requirement in `buck2-macos-local-reapi`.
 
 | Component | Version | Source |
 |---|---|---|
-| Ubuntu base | 26.04 LTS | Docker Hub `ubuntu:26.04` |
+| Ubuntu base | 26.04 LTS (Resolute Raccoon) | Docker Hub `ubuntu:26.04` |
 | GnuCash | 5.14 | Ubuntu 26.04 universe → `apt-get install python3-gnucash` |
 | Python | 3.14.3 | Ubuntu 26.04 system default |
 | mcp SDK | latest stable at build time | PyPI via uv |
 
 **GnuCash version note:** Ubuntu 26.04 universe ships GnuCash 5.14 directly — no
-PPA required. Spike C confirmed 5.14 opens files saved by macOS GnuCash 5.15
+[PPA](https://launchpad.net/~gnucash/+archive/ubuntu/ppa) required. Spike C confirmed 5.14 opens files saved by macOS GnuCash 5.15
 without migration prompt.
 
 **Python dependency note:** The Python container does not depend on FastMCP or
