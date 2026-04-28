@@ -3,8 +3,6 @@
 Public API:
   book_path() -> Path
   get_usd(book) -> GncCommodity
-  open_session(path, is_new=False) -> Session
-  close_session(session) -> None
   book_session(path, is_new=False) -> contextmanager[Session]
   clear_stale_lock(path) -> None
   get_account(book, full_name) -> Account          raises AccountNotFoundError
@@ -21,7 +19,7 @@ import glob
 import os
 from pathlib import Path
 
-from gnucash import Session, SessionOpenMode
+from gnucash import Session, SessionOpenMode, Account, Book, Transaction
 from gnucash import GncNumeric
 
 
@@ -33,7 +31,7 @@ def book_path() -> Path:
     return Path(os.environ.get("GNUCASH_BOOK_PATH", "/data/project.gnucash"))
 
 
-def get_usd(book):
+def get_usd(book: Book):
     return book.get_table().lookup("CURRENCY", "USD")
 
 
@@ -67,7 +65,7 @@ def clear_stale_lock(path: Path) -> None:
         pass
 
 
-def open_session(path: Path, is_new: bool = False) -> Session:
+def _open_session(path: Path, is_new: bool = False) -> Session:
     """Open a GnuCash XML session.
 
     For new books: initializes the root account then saves so the file exists
@@ -88,7 +86,7 @@ def open_session(path: Path, is_new: bool = False) -> Session:
     return session
 
 
-def close_session(session: Session, path: Path | None = None) -> None:
+def _close_session(session: Session, path: Path | None = None) -> None:
     """Save and end session, releasing the .LCK file."""
     if path is not None:
         _purge_same_second_backup(path)
@@ -100,12 +98,12 @@ def close_session(session: Session, path: Path | None = None) -> None:
 def book_session(path: Path, is_new: bool = False):
     """Context manager: open → yield session → save+end even on exception."""
     path = Path(path)
-    session = open_session(path, is_new=is_new)
+    session = _open_session(path, is_new=is_new)
     try:
         yield session
     finally:
         try:
-            close_session(session, path=path)
+            _close_session(session, path=path)
         except Exception:
             # end() can fail if session already ended; suppress and try bare end()
             try:
@@ -114,7 +112,7 @@ def book_session(path: Path, is_new: bool = False):
                 pass
 
 
-def get_account(book, full_name: str):
+def get_account(book: Book, full_name: str):
     """Return Account for colon-separated full_name, e.g. 'Expenses:Construction:Electrical'.
 
     Raises AccountNotFoundError if any segment is not found.
@@ -132,7 +130,7 @@ def get_account(book, full_name: str):
     return current
 
 
-def set_txn_isodate(txn, date_str: str) -> None:
+def set_txn_isodate(txn: Transaction, date_str: str) -> None:
     """Set a transaction's date from an ISO-8601 string (YYYY-MM-DD).
 
     GnuCash's xaccTransSetDate signature is (day, month, year) — the opposite
@@ -143,7 +141,7 @@ def set_txn_isodate(txn, date_str: str) -> None:
     txn.SetDate(d.day, d.month, d.year)
 
 
-def get_txn_isodate(txn) -> str:
+def get_txn_isodate(txn: Transaction) -> str:
     """Return a transaction's date as an ISO-8601 string (YYYY-MM-DD).
 
     Pairs with set_txn_isodate; avoids scattering strftime("%Y-%m-%d") calls
@@ -152,7 +150,7 @@ def get_txn_isodate(txn) -> str:
     return txn.GetDate().strftime("%Y-%m-%d")
 
 
-def account_balance_float(acc, negate: bool = False) -> float:
+def account_balance_float(acc: Account, negate: bool = False) -> float:
     """Return an account's balance as a float.
 
     Pass negate=True for liability/AP accounts: GnuCash stores credit-normal

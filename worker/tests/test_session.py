@@ -12,8 +12,8 @@ from hypothesis import given, settings
 from hypothesis.strategies import dates
 
 from gnucash_mcp.session import (
-    open_session,
-    close_session,
+    _open_session,
+    _close_session,
     book_session,
     get_account,
     gnc_decimal,
@@ -30,12 +30,12 @@ class TestSessionLifecycle:
 
     def test_open_session_creates_lock_file(self, test_book_path):
         """T1.4.1: open_session(path, is_new=True) creates .LCK file alongside book"""
-        session = open_session(test_book_path, is_new=True)
+        session = _open_session(test_book_path, is_new=True)
         try:
             lck_file = Path(str(test_book_path) + ".LCK")
             assert lck_file.exists(), ".LCK file should exist for open session"
         finally:
-            close_session(session)
+            _close_session(session)
 
     def test_open_session_calls_early_save(self, test_book_path):
         """T1.4.2: open_session(path, is_new=True) calls save() before returning"""
@@ -43,17 +43,17 @@ class TestSessionLifecycle:
         if test_book_path.exists():
             test_book_path.unlink()
 
-        session = open_session(test_book_path, is_new=True)
+        session = _open_session(test_book_path, is_new=True)
         try:
             # For a new book, save() should have been called, so file exists
             assert test_book_path.exists(), "Book file should exist after open_session(is_new=True)"
         finally:
-            close_session(session)
+            _close_session(session)
 
     def test_close_session_removes_lock(self, test_book_path):
         """T1.4.3: close_session() calls save() then end(); .LCK file absent after"""
-        session = open_session(test_book_path, is_new=True)
-        close_session(session)
+        session = _open_session(test_book_path, is_new=True)
+        _close_session(session)
 
         lck_file = Path(str(test_book_path) + ".LCK")
         assert not lck_file.exists(), ".LCK file should be removed after close_session()"
@@ -65,8 +65,8 @@ class TestStaleFileLocking:
     def test_stale_lock_cleared_on_open(self, test_book_path):
         """T1.4.4: Stale .LCK file from a prior crash is cleared on open without error"""
         # Create book
-        session = open_session(test_book_path, is_new=True)
-        close_session(session)
+        session = _open_session(test_book_path, is_new=True)
+        _close_session(session)
 
         # Create stale .LCK file (simulates crash before session.end())
         lck_file = Path(str(test_book_path) + ".LCK")
@@ -75,12 +75,12 @@ class TestStaleFileLocking:
         # clear_stale_lock() is called at process startup (via __main__.py)
         # before any open_session(); mimic that here
         clear_stale_lock(test_book_path)
-        session = open_session(test_book_path, is_new=False)
+        session = _open_session(test_book_path, is_new=False)
         try:
             # Lock should be cleared before this point
             assert lck_file.exists(), ".LCK should exist for open session"
         finally:
-            close_session(session)
+            _close_session(session)
 
 
 class TestContextManager:
@@ -110,15 +110,15 @@ class TestDoubleOpen:
 
     def test_second_open_on_locked_book_raises_error(self, test_book_path):
         """T1.4.6: Second open on locked book raises GnuCashBackendException with ERR_BACKEND_LOCKED"""
-        session1 = open_session(test_book_path, is_new=True)
+        session1 = _open_session(test_book_path, is_new=True)
         try:
             # Try to open the same book again while locked
             with pytest.raises(GnuCashBackendException) as exc_info:
-                open_session(test_book_path, is_new=False)
+                _open_session(test_book_path, is_new=False)
             # The exception should mention locking
             assert len(exc_info.value.errors) > 0
         finally:
-            close_session(session1)
+            _close_session(session1)
 
 
 class TestAccountLookup:
