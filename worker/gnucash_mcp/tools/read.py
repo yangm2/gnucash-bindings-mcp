@@ -4,22 +4,17 @@ All tools open a GnuCash session read-only, query data, and return dicts/lists
 suitable for JSON serialization.  Book path from GNUCASH_BOOK_PATH env var.
 """
 
-import os
-from pathlib import Path
+import gnucash.gnucash_core_c as gc
 
 from gnucash_mcp.session import (
+    account_balance_float,
+    AccountNotFoundError,
+    book_path,
     book_session,
     get_account,
     get_txn_isodate,
-    account_balance_float,
-    AccountNotFoundError,
 )
 from gnucash_mcp import wal
-
-
-def _book_path() -> Path:
-    p = os.environ.get("GNUCASH_BOOK_PATH", "/data/project.gnucash")
-    return Path(p)
 
 
 def _subtree_balance_float(acc) -> float:
@@ -39,9 +34,6 @@ def _balance_str(gnc_numeric) -> str:
 
 
 def _acc_to_dict(acc) -> dict:
-    """Serialize an Account to a minimal dict."""
-    import gnucash.gnucash_core_c as gc
-
     acct_type = acc.GetType()
     type_str = gc.xaccAccountGetTypeStr(acct_type)
     return {
@@ -66,14 +58,14 @@ def _txn_to_dict(txn) -> dict:
         "date": get_txn_isodate(txn) if txn.GetDate() else None,
         "description": txn.GetDescription(),
         "splits": splits,
-        "mcp_wal_id": txn.GetSlot("mcp-wal-id") if hasattr(txn, "GetSlot") else None,
-        "mcp_tool": txn.GetSlot("mcp-tool") if hasattr(txn, "GetSlot") else None,
+        "mcp_wal_id": txn.GetSlot("mcp-wal-id") if (has_slot := hasattr(txn, "GetSlot")) else None,
+        "mcp_tool": txn.GetSlot("mcp-tool") if has_slot else None,
     }
 
 
 def get_account_balance(account_path: str) -> dict:
     """Return current balance for a colon-separated account path."""
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         try:
             acc = get_account(session.book, account_path)
         except AccountNotFoundError as exc:
@@ -88,7 +80,7 @@ def get_account_balance(account_path: str) -> dict:
 
 def list_accounts(parent_path: str | None = None) -> list:
     """List accounts. If parent_path given, list children of that account; else top-level."""
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         book = session.book
         if parent_path:
             try:
@@ -104,14 +96,13 @@ def list_accounts(parent_path: str | None = None) -> list:
 
 def list_transactions(account_path: str, limit: int = 20) -> list:
     """List most recent transactions for an account, newest first."""
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         try:
             acc = get_account(session.book, account_path)
         except AccountNotFoundError as exc:
             return [{"error": str(exc)}]
 
         splits = list(acc.GetSplitList())
-        # Sort by transaction date descending
         splits.sort(key=lambda s: s.GetParent().GetDate(), reverse=True)
         splits = splits[:limit]
 
@@ -149,7 +140,7 @@ def _find_txn_by_guid(book, guid_str: str):
 
 def get_transaction(tx_id: str) -> dict:
     """Fetch a single transaction by GUID."""
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         try:
             txn = _find_txn_by_guid(session.book, tx_id)
             if txn is None:
@@ -161,7 +152,7 @@ def get_transaction(tx_id: str) -> dict:
 
 def get_project_summary() -> dict:
     """Return summary balances for the main project accounts."""
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         book = session.book
 
         def bal(path, total=False):
@@ -192,7 +183,7 @@ def get_audit_log() -> list:
 def unlock_ledger() -> dict:
     """Internal tool: returns session context resource content."""
     return {
-        "book": str(_book_path()),
+        "book": str(book_path()),
         "tool_groups": {
             "operational": [
                 "receive_invoice",
@@ -213,7 +204,7 @@ def unlock_ledger() -> dict:
 
 def vendors_resource() -> list:
     """Return list of vendors (AP accounts) with current balances."""
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         book = session.book
         try:
             liabilities = get_account(book, "Liabilities")
@@ -225,7 +216,7 @@ def vendors_resource() -> list:
             if acc.name.startswith("AP — "):
                 vendors.append(
                     {
-                        "name": acc.name[5:],  # strip "AP — " prefix
+                        "name": acc.name[len("AP — ") :],
                         "account": acc.name,
                         "balance": f"{account_balance_float(acc, negate=True):.2f}",
                     }

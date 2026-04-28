@@ -1,6 +1,8 @@
 """GnuCash session management (M1.4).
 
 Public API:
+  book_path() -> Path
+  get_usd(book) -> GncCommodity
   open_session(path, is_new=False) -> Session
   close_session(session) -> None
   book_session(path, is_new=False) -> contextmanager[Session]
@@ -16,6 +18,7 @@ from contextlib import contextmanager
 from datetime import date as Date, datetime
 from decimal import Decimal, InvalidOperation
 import glob
+import os
 from pathlib import Path
 
 from gnucash import Session, SessionOpenMode
@@ -24,6 +27,14 @@ from gnucash import GncNumeric
 
 class AccountNotFoundError(Exception):
     pass
+
+
+def book_path() -> Path:
+    return Path(os.environ.get("GNUCASH_BOOK_PATH", "/data/project.gnucash"))
+
+
+def get_usd(book):
+    return book.get_table().lookup("CURRENCY", "USD")
 
 
 def _purge_same_second_backup(path: Path) -> None:

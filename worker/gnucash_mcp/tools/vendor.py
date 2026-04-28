@@ -8,18 +8,17 @@ This lets vendor_list/vendor_get_details reconstruct full metadata without
 scanning the expense tree.
 """
 
-import os
-from pathlib import Path
-
 from gnucash import Account
 import gnucash.gnucash_core_c as gc
 
 from gnucash_mcp.session import (
     AccountNotFoundError,
     account_balance_float,
+    book_path,
     book_session,
     get_account,
     get_txn_isodate,
+    get_usd,
 )
 
 
@@ -42,20 +41,12 @@ EXPENSE_CATEGORIES: dict[str, str] = {
 _AP_PREFIX = "AP — "
 
 
-def _book_path() -> Path:
-    return Path(os.environ.get("GNUCASH_BOOK_PATH", "/data/project.gnucash"))
-
-
 def _ap_name(vendor_name: str) -> str:
     return f"{_AP_PREFIX}{vendor_name}"
 
 
 def _expense_account_name(category: str, vendor_name: str) -> str:
     return f"{EXPENSE_CATEGORIES[category]} — {vendor_name}"
-
-
-def _get_usd(book):
-    return book.get_table().lookup("CURRENCY", "USD")
 
 
 def _read_ap(book, vendor_name: str) -> Account:
@@ -85,7 +76,7 @@ def _create_ap_account(book, ap_name: str, liabilities, usd, description: str) -
 def _ensure_expense_account(book, expense_name: str, expenses) -> None:
     existing = {acc.name for acc in expenses.get_children()}
     if expense_name not in existing:
-        usd = _get_usd(book)
+        usd = get_usd(book)
         exp_acc = Account(book)
         exp_acc.SetName(expense_name)
         exp_acc.SetType(gc.ACCT_TYPE_EXPENSE)
@@ -111,7 +102,7 @@ def vendor_add(
             f"Invalid expense_category {expense_category!r}. Valid: {sorted(EXPENSE_CATEGORIES)}"
         )
 
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         book = session.book
         liabilities = get_account(book, "Liabilities")
         existing_ap = {acc.name for acc in liabilities.get_children()}
@@ -120,11 +111,11 @@ def vendor_add(
         if trade:
             get_account(book, trade)  # raises AccountNotFoundError if path missing
             if ap_name not in existing_ap:
-                _create_ap_account(book, ap_name, liabilities, _get_usd(book), f"trade:{trade}")
+                _create_ap_account(book, ap_name, liabilities, get_usd(book), f"trade:{trade}")
         else:
             expense_name = _expense_account_name(expense_category, name)  # type: ignore[arg-type]
             expense_path = f"Expenses:{expense_name}"
-            usd = _get_usd(book)
+            usd = get_usd(book)
             if ap_name not in existing_ap:
                 _create_ap_account(book, ap_name, liabilities, usd, f"professional:{expense_path}")
             _ensure_expense_account(book, expense_name, get_account(book, "Expenses"))
@@ -134,7 +125,7 @@ def vendor_add(
 
 def vendor_list() -> list[dict]:
     """List all vendors with type, paths, and current AP balance."""
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         book = session.book
         try:
             liabilities = get_account(book, "Liabilities")
@@ -165,7 +156,7 @@ def vendor_list() -> list[dict]:
 
 def vendor_get_details(name: str) -> dict:
     """Return full details and transaction history for a named vendor."""
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         book = session.book
         try:
             ap_acc = _read_ap(book, name)
@@ -204,7 +195,7 @@ def vendor_get_details(name: str) -> dict:
 
 def vendor_rename(old_name: str, new_name: str) -> dict:
     """Rename a vendor. For professional vendors, renames both AP and expense accounts."""
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         book = session.book
         try:
             ap_acc = _read_ap(book, old_name)
@@ -248,7 +239,7 @@ def vendor_update(
             f"Invalid expense_category {expense_category!r}. Valid: {sorted(EXPENSE_CATEGORIES)}"
         )
 
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         book = session.book
         try:
             ap_acc = _read_ap(book, name)
@@ -274,7 +265,7 @@ def vendor_delete(name: str, confirm: bool = False) -> dict:
             "Vendors with transaction history cannot be deleted."
         )
 
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         book = session.book
         try:
             ap_acc = _read_ap(book, name)

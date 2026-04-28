@@ -4,17 +4,16 @@ Tools for creating, renaming, moving, and deleting accounts, verifying the
 chart of accounts structure, and posting opening balance transactions.
 """
 
-import os
-from pathlib import Path
-
 from gnucash import Account, Transaction, Split
 
 import gnucash.gnucash_core_c as gc
 
 from gnucash_mcp.session import (
     AccountNotFoundError,
+    book_path,
     book_session,
     get_account,
+    get_usd,
     gnc_decimal,
     set_txn_isodate,
 )
@@ -42,14 +41,6 @@ class AccountHasTransactionsError(Exception):
     pass
 
 
-def _book_path() -> Path:
-    return Path(os.environ.get("GNUCASH_BOOK_PATH", "/data/project.gnucash"))
-
-
-def _get_usd(book):
-    return book.get_table().lookup("CURRENCY", "USD")
-
-
 def _ensure_opening_balances(book) -> Account:
     """Return Equity:Opening Balances, creating it if absent."""
     try:
@@ -59,7 +50,7 @@ def _ensure_opening_balances(book) -> Account:
         acc = Account(book)
         acc.SetName("Opening Balances")
         acc.SetType(gc.ACCT_TYPE_EQUITY)
-        acc.SetCommodity(_get_usd(book))
+        acc.SetCommodity(get_usd(book))
         equity.append_child(acc)
         return acc
 
@@ -79,11 +70,11 @@ def book_add_account(
             f"Invalid account_type {account_type!r}. Valid values: {sorted(ACCOUNT_TYPES)}"
         )
 
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         book = session.book
         parent = get_account(book, parent_path)  # raises AccountNotFoundError if missing
 
-        existing = {acc.name: acc for acc in parent.get_children()}
+        existing = {acc.name for acc in parent.get_children()}
         if name not in existing:
             usd = book.get_table().lookup("CURRENCY", commodity)
             acc = Account(book)
@@ -92,9 +83,7 @@ def book_add_account(
             acc.SetCommodity(usd)
             parent.append_child(acc)
 
-        full_path = f"{parent_path}:{name}"
-
-    return {"status": "ok", "path": full_path}
+    return {"status": "ok", "path": f"{parent_path}:{name}"}
 
 
 def book_get_account_tree(parent_path: str = "") -> list[dict]:
@@ -102,7 +91,7 @@ def book_get_account_tree(parent_path: str = "") -> list[dict]:
 
     Pass parent_path="" to get top-level accounts.
     """
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         book = session.book
         if parent_path == "":
             parent = book.get_root_account()
@@ -151,11 +140,10 @@ def book_verify_structure() -> dict:
             paths |= _live_paths(child, path)
         return paths
 
-    with book_session(_book_path()) as session:
-        book = session.book
-        root = book.get_root_account()
-        live = _live_paths(root)
-        expected = _expected_paths(CHART)
+    expected = _expected_paths(CHART)
+
+    with book_session(book_path()) as session:
+        live = _live_paths(session.book.get_root_account())
 
     missing = sorted(expected - live)
     unexpected = sorted(live - expected)
@@ -170,12 +158,12 @@ def book_set_opening_balance(account_path: str, amount: str, date: str) -> dict:
         {"account_path": account_path, "amount": amount, "date": date},
     )
 
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         book = session.book
         target = get_account(book, account_path)
         ob_equity = _ensure_opening_balances(book)
 
-        usd = _get_usd(book)
+        usd = get_usd(book)
         txn = Transaction(book)
         txn.BeginEdit()
         set_txn_isodate(txn, date)
@@ -205,7 +193,7 @@ def book_set_opening_balance(account_path: str, amount: str, date: str) -> dict:
 
 def book_rename_account(account_path: str, new_name: str) -> dict:
     """Rename an account leaf. Does not affect existing transactions."""
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         acc = get_account(session.book, account_path)
         acc.SetName(new_name)
 
@@ -214,7 +202,7 @@ def book_rename_account(account_path: str, new_name: str) -> dict:
 
 def book_move_account(account_path: str, new_parent_path: str) -> dict:
     """Move an account to a new parent. Existing transactions are unaffected."""
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         book = session.book
         acc = get_account(book, account_path)
         new_parent = get_account(book, new_parent_path)
@@ -232,7 +220,7 @@ def book_delete_account(account_path: str, require_zero_balance: bool = True) ->
     Raises AccountHasTransactionsError if the account has any splits and
     require_zero_balance=True.
     """
-    with book_session(_book_path()) as session:
+    with book_session(book_path()) as session:
         book = session.book
         acc = get_account(book, account_path)
 
