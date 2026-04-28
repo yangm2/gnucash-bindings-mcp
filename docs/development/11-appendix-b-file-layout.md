@@ -46,6 +46,11 @@ gnucash-bindings-mcp/
 │       ├── Dockerfile.echo
 │       └── run.sh
 │
+├── bin/                       ← macOS host scripts (not built into container)
+│   ├── create-book-volume.zsh ← one-time sparsebundle setup (M5.1)
+│   ├── gnucash-browse         ← read-only GUI wrapper (M5.3)
+│   └── verify-backup.zsh      ← backup verification (M8.3)
+│
 ├── proxy/                     ← Swift MCP proxy (Phase 5, M5.2)
 │   ├── Package.swift          ← SwiftPM manifest (stub until M5.2)
 │   ├── Package.resolved
@@ -92,10 +97,8 @@ gnucash-bindings-mcp/
     │       ├── eco.py         ← Tier 2 eco_* tools (M4.2)
     │       └── project.py     ← project-specific tools (Phase 6)
     │
-    ├── scripts/               ← operational scripts (copied into container by Dockerfile)
+    ├── scripts/               ← Python scripts (copied into container by Dockerfile)
     │   ├── init_book.py           ← chart of accounts initialization (M1.2)
-    │   ├── create-book-volume.zsh ← sparsebundle one-time setup (M5.1; runs on macOS host)
-    │   ├── verify-backup.zsh      ← backup verification (M8.3; runs on macOS host)
     │   └── analyze-sessions.py    ← hybrid readiness report from metrics.jsonl (M9.4)
     │
     └── tests/                 ← pytest suite (runs inside container via mise test)

@@ -97,6 +97,14 @@ description = "Lint Swift code"
 depends = ["swiftfmt"]
 run = "swiftlint lint --fix {{config_root}}/proxy"
 
+[tasks.swift-test]
+description = "Run Swift proxy tests"
+run = """
+SANDBOX_FLAG=${CLAUDECODE:+--disable-sandbox}
+cd {{config_root}}/proxy && \
+swift test $SANDBOX_FLAG --build-path "$TMPDIR/gnucash-mcp-build"
+"""
+
 # ── runtime ───────────────────────────────────────────────────────────────────
 
 [tasks.init-book]

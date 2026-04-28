@@ -1,4 +1,4 @@
-# Phase 5 — Infrastructure: Sparsebundle, Wrappers, and Snapshots
+ p# Phase 5 — Infrastructure: Sparsebundle, Wrappers, and Snapshots
 
 **Goal:** Harden the operational story. The sparsebundle is the authoritative
 storage medium. The zsh wrappers handle the full lifecycle cleanly. Snapshots work.
@@ -8,7 +8,7 @@ storage medium. The zsh wrappers handle the full lifecycle cleanly. Snapshots wo
 ### M5.1 — Sparsebundle creation and book migration
 
 **Deliverables:**
-- `worker/scripts/create-book-volume.zsh` — one-time setup:
+- `bin/create-book-volume.zsh` — one-time setup (runs on macOS host, not in container):
   - Creates `~/books/project.sparsebundle` (100MB initial, APFS)
   - Attaches read-write at `/Volumes/GnuCash-Project`
   - Moves Phase 1 `project.gnucash` into the volume

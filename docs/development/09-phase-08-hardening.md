@@ -59,7 +59,7 @@ T8.2.4  Claude Desktop surfaces the error message rather than silently failing
 ### M8.3 — Backup verification
 
 **Deliverables:**
-- `worker/scripts/verify-backup.zsh` — weekly manual trigger:
+- `bin/verify-backup.zsh` — weekly manual trigger (runs on macOS host, not in container):
   - Mounts latest APFS snapshot (or most recent `.YYYYMMDDHHMMSS.gnucash` backup)
   - Opens book read-only via Python bindings in container
   - Verifies: account count matches expected, root balance sane (assets = liabilities + equity)
