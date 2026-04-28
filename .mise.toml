@@ -90,12 +90,18 @@ container run --rm \
 
 [tasks.swiftfmt]
 description = "Format Swift code"
-run = "swiftformat --verbose {{config_root}}/proxy"
+run = """
+SANDBOX_FLAG=${CLAUDECODE:- --verbose}
+swiftformat $SANDBOX_FLAG {{config_root}}/proxy
+"""
 
 [tasks.swiftlint]
 description = "Lint Swift code"
 depends = ["swiftfmt"]
-run = "swiftlint lint --fix {{config_root}}/proxy"
+run = """
+SANDBOX_FLAG=${CLAUDECODE:- --fix}
+swiftlint lint $SANDBOX_FLAG {{config_root}}/proxy
+"""
 
 [tasks.swift-test]
 description = "Run Swift proxy tests"
