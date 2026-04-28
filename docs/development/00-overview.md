@@ -356,7 +356,8 @@ the Swift layer receives protocol requests and dispatches containers via
 | `tools/call` — any | Container via pool | Yes |
 
 **Swift proxy owns:**
-- MCP HTTP server on `localhost:8980` (NIO-based, persistent, ~5MB)
+- MCP stdio transport (MC-4): reads newline-delimited JSON-RPC from stdin,
+  writes responses to stdout; registered as a `command` in `claude_desktop_config.json`
 - `initialize` / `tools/list` / `resources/list` responses (static, compiled)
 - Static resource content (`gnucash://session-context`, `gnucash://book-setup-guide`,
   `gnucash://vendor-guide`, `gnucash://expected-chart`)
@@ -441,7 +442,8 @@ dependencies: [
     .package(url: "https://github.com/apple/container.git", from: "0.10.0"),
     .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
     .package(url: "https://github.com/apple/swift-nio.git", from: "2.0.0"),
-    // NIO used for HTTP server; no gRPC needed (plain HTTP, not gRPC)
+    // NIO used for async task coordination and container pool; no HTTP server needed
+    // (transport is stdio, not HTTP — see MC-4)
 ],
 targets: [
     .executableTarget(
@@ -451,7 +453,7 @@ targets: [
             .product(name: "ContainerResource",  package: "container"),
             .product(name: "ArgumentParser",     package: "swift-argument-parser"),
             .product(name: "NIOCore",            package: "swift-nio"),
-            .product(name: "NIOHTTP1",           package: "swift-nio"),
+            // NIOHTTP1 not needed — MCP transport is stdio, not HTTP
         ]
     ),
 ]
@@ -460,17 +462,17 @@ targets: [
 **Subcommand CLI (swift-argument-parser):**
 
 ```
-gnucash-mcp start     — attach sparsebundle, start HTTP server, write PID file
+gnucash-mcp start     — attach sparsebundle, begin reading stdin (stdio MCP transport), write PID file
 gnucash-mcp stop      — send SIGTERM to running proxy, wait for clean exit
 gnucash-mcp status    — check proxy running + pool state + last tool call
-gnucash-mcp install   — write claude_desktop_config.json entry + launchd plist
-gnucash-mcp snapshot  — trigger manual APFS snapshot without starting a session
+gnucash-mcp install   — write claude_desktop_config.json command entry (--stdio) + launchd plist
+gnucash-mcp snapshot  — trigger manual cp -c backup without starting a full write session
 ```
 
 **Phased development plan for the Swift proxy:**
 
 *Phase 1 proxy (ships with Phase 5 of the main plan):*
-- HTTP server on `localhost:8980`
+- stdio transport: reads newline-delimited JSON-RPC from stdin, writes to stdout
 - Static tool catalog (all 21 tools compiled in)
 - Static resources (`gnucash://book-setup-guide`, `gnucash://vendor-guide`,
   `gnucash://expected-chart`)

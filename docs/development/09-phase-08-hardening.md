@@ -78,7 +78,8 @@ T8.3.3  Script runs to completion without hanging (max 30 second timeout)
 
 **Deliverables:**
 - `gnucash-mcp install` subcommand:
-  - Writes `claude_desktop_config.json` entry (`streamable-http`, `localhost:8980`)
+  - Writes `claude_desktop_config.json` `command` entry pointing to the
+    `gnucash-mcp` binary with `--stdio` flag (MC-4; not `streamable-http`)
   - Writes `~/Library/LaunchAgents/com.youruser.gnucash-mcp.plist`
   - Instructions to load: `launchctl load ~/Library/LaunchAgents/com.youruser.gnucash-mcp.plist`
 - launchd plist configuration:
@@ -114,8 +115,9 @@ but does NOT restart it after a clean `gnucash-mcp stop` (exit 0). This is the
 correct behaviour: stop is intentional, crash is not.
 
 **Note:** The Swift proxy is the only thing that starts at login. No container runs
-at login — containers are spun up on first tool call. Claude Desktop connects to
-`localhost:8980` independently once the proxy is running.
+at login — containers are spun up on first tool call. Claude Desktop spawns the
+proxy as a child process via the `command` entry in `claude_desktop_config.json`;
+the launchd plist ensures the proxy is running before Claude Desktop is used.
 
 **Tests:**
 ```
@@ -125,7 +127,7 @@ T8.4.3  get_project_summary() callable from Claude.ai chat window
 T8.4.4  After clean gnucash-mcp stop (exit 0), launchd does NOT restart the proxy
 T8.4.5  After simulated crash (kill -9 on proxy), launchd restarts it within 5s
 T8.4.6  Server startup latency < 2s from gnucash-mcp start to first tools/list response
-        (proxy only — no container started yet)
+        to stdio (proxy only — no container started yet)
 T8.4.7  First tool call latency < 1.5s (includes container start via ContainerAPIClient)
 T8.4.8  CoWork session shows gnucash-myproject tools available via SDK bridge
 T8.4.9  Mac sleep → wake → tool call succeeds (KU-11 sleep/wake recovery confirmed;
@@ -137,7 +139,7 @@ T8.4.9  Mac sleep → wake → tool call succeeds (KU-11 sleep/wake recovery con
 ### Phase 8 exit criteria
 
 - Swift proxy registered via launchd, starts at login, survives crash-restart
-- Claude Desktop connected via `streamable-http` to `localhost:8980`
+- Claude Desktop connected via stdio `command` entry; `gnucash-myproject` shows connected
 - CoWork session confirmed working via SDK bridge (T8.4.8 documented)
 - Schema version guard catches a deliberate version mismatch in testing
 - Backup verification script runs clean on current book state
@@ -160,12 +162,12 @@ for single-tool interactions; this upgrade is a quality-of-life improvement
 for agentic workflows.
 
 **Deliverables (purely Swift proxy changes — Python container unchanged):**
-- Swift proxy issues `Mcp-Session-Id` in `initialize` response
+- Swift proxy generates an internal session ID on each `initialize` and includes it
+  in the `initialize` result JSON (not as an HTTP header — transport is stdio)
 - `sessions: [SessionID: PoolEntry]` dictionary replaces single `pool` entry
-- On `tools/call` with session ID: reuse that session's container, extend TTL
-- On session termination (client sends DELETE `/mcp` with session ID per spec):
-  drain that session's container immediately
-- TTL fallback (dirty disconnect — client quits without terminating): 60s idle
+- On `tools/call` bearing the session ID: reuse that session's container, extend TTL
+- On stdin EOF (Claude Desktop closed the connection): drain all active sessions
+- TTL fallback (dirty disconnect — stdin stays open but goes idle): 60s idle
   per-session TTL, not 5s global TTL
 
 ```swift
@@ -185,18 +187,25 @@ var sessions: [String: PoolEntry] = [:]
 func handleInitialize(_ request: JSONRPCRequest) -> JSONRPCResponse {
     let sessionID = UUID().uuidString
     var response = staticInitializeResponse
-    response.sessionID = sessionID          // Mcp-Session-Id header
+    // Include session ID in result body; client echoes it in subsequent requests
+    response.result["sessionId"] = .string(sessionID)
     sessions[sessionID] = PoolEntry(...)    // create entry; container starts on first call
     return response
+}
+
+// stdin EOF handler — Claude Desktop closed the pipe
+func handleDisconnect() async {
+    for (_, entry) in sessions { await entry.container.stop() }
+    sessions.removeAll()
 }
 ```
 
 **Tests:**
 ```
-T8.5.1  Two concurrent initialize requests produce two distinct session IDs
+T8.5.1  Two sequential initialize requests produce two distinct session IDs
 T8.5.2  Tool calls within same session reuse warm container (no cold start after first call)
 T8.5.3  Tool call with unknown/expired session ID starts fresh container, returns result
-T8.5.4  Session termination (DELETE /mcp) drains that session's container within 2s
+T8.5.4  stdin EOF → all active session containers drained within 2s; sparsebundle detached
 T8.5.5  After 60s idle, expired session's container is reaped by reap loop
 T8.5.6  10-step CoWork agentic task: only 1 cold start (first call), remaining 9 are warm
         (manual — measure wall clock time in CoWork; record in TEST_RESULTS.md)

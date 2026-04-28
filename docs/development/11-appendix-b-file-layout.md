@@ -53,7 +53,7 @@ gnucash-bindings-mcp/
 │   │   └── gnucash-mcp/
 │   │       ├── main.swift            ← @main, ArgumentParser entrypoint
 │   │       ├── CLI.swift             ← start/stop/status/install/snapshot subcommands
-│   │       ├── MCPHTTPServer.swift   ← NIO HTTP server on localhost:8980
+│   │       ├── MCPStdioTransport.swift ← reads stdin, writes stdout (stdio MCP transport, MC-4)
 │   │       ├── MCPHandler.swift      ← routes initialize/tools/resources
 │   │       ├── ToolCatalog.swift     ← compiled tool schemas, Tier 1 + Tier 2
 │   │       ├── StaticResources.swift ← session-context, book-setup-guide, etc.

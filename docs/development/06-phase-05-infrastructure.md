@@ -32,16 +32,27 @@ T5.1.6  Re-running script with volume already present aborts with clear error me
 **Deliverables:** `Sources/gnucash-mcp/` — Swift executable implementing MC-9
 Phase 1 proxy:
 
-- NIO HTTP server on `localhost:8980`; handles `initialize`, `tools/list`,
-  `resources/list`, `resources/read` (static) without starting a container
+- stdio transport (MC-4): reads newline-delimited JSON-RPC from stdin, writes
+  responses to stdout; registered as a `command` entry in
+  `claude_desktop_config.json` (no HTTP server)
+- Handles `initialize`, `tools/list`, `resources/list`,
+  `resources/read` (static — `gnucash://session-context`,
+  `gnucash://book-setup-guide`, `gnucash://vendor-guide`,
+  `gnucash://expected-chart`) without starting a container
+- Container runtime check on startup: starts the container system via SDK if
+  not running; fails with a clear error if image `gnucash-mcp:latest` is
+  missing (directs user to `mise build`)
 - Per-request container dispatch via `ContainerAPIClient` stdin/stdout
 - Container pool: size 1, 5-second TTL; reap loop checks every 1s
 - Sleep/wake recovery: validates container liveness before reuse (KU-11)
 - Sparsebundle mount via `Process` (`hdiutil attach -readwrite -nobrowse`)
   on first tool call; unmount on SIGTERM/SIGINT
-- Pre-session APFS snapshot before first write in each proxy session
+- Pre-session `cp -c` backup before first write call in each proxy session
 - SIGTERM/SIGINT → drain pool → detach sparsebundle → exit
-- Subcommands: `gnucash-mcp start`, `gnucash-mcp stop`, `gnucash-mcp status`
+- Subcommands: `gnucash-mcp start`, `gnucash-mcp stop`, `gnucash-mcp status`,
+  `gnucash-mcp install`, `gnucash-mcp snapshot`
+- `gnucash-mcp install`: writes `claude_desktop_config.json` `command` entry
+  and `~/Library/LaunchAgents/com.youruser.gnucash-mcp.plist`
 
 **Static tool catalog in Swift (Tier 1 + Tier 2 — compiled, not runtime):**
 
@@ -139,12 +150,15 @@ static let tools: [MCPTool] = [
 ]
 ```
 
-**Container dispatch flow:**
+**stdio dispatch loop:**
 
 ```swift
+// MCPStdioTransport.swift — read one newline-delimited JSON-RPC message per line,
+// dispatch, write response, repeat until stdin closes.
 func dispatch(_ request: JSONRPCRequest) async throws -> JSONRPCResponse {
     // Static responses — no container
     if request.method == "initialize" { return staticInitializeResponse }
+    if request.method == "notifications/initialized" { return .noResponse }
     if request.method == "tools/list" { return MCPResponse(tools: ToolCatalog.tools) }
     if request.method == "resources/list" { return staticResourcesList }
     if request.method == "resources/read",
@@ -165,11 +179,21 @@ func dispatch(_ request: JSONRPCRequest) async throws -> JSONRPCResponse {
 
 **Tests:**
 ```
-T5.2.1  gnucash-mcp start attaches sparsebundle and begins listening on :8980
-T5.2.2  curl POST localhost:8980/mcp initialize returns valid response, no container started
-T5.2.3  curl POST localhost:8980/mcp tools/list returns full catalog, no container started
-T5.2.4  curl POST localhost:8980/mcp resources/read gnucash://book-setup-guide returns
-        markdown content, no container started
+T5.2.1  gnucash-mcp start with container system not running → SDK starts it
+        automatically; proxy proceeds normally
+T5.2.1a gnucash-mcp start with image gnucash-mcp:latest missing → proxy exits
+        with clear error message directing user to `mise build`; no hang
+T5.2.1b gnucash-mcp start attaches sparsebundle and reads from stdin (no hang on empty
+        stdin before first message)
+T5.2.2  echo '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":
+        "2024-11-05","capabilities":{}},"id":1}' | gnucash-mcp --stdio
+        → valid initialize response on stdout, no container started
+T5.2.3  tools/list message piped to gnucash-mcp --stdio returns full catalog,
+        no container started
+T5.2.4  resources/read gnucash://book-setup-guide piped to gnucash-mcp --stdio
+        returns markdown content, no container started
+T5.2.4a resources/read gnucash://session-context piped to gnucash-mcp --stdio
+        returns session-context markdown, no container started
 T5.2.5  tools/call receive_invoice starts container, dispatches, returns result
 T5.2.6  Second tools/call within 5s reuses warm container (pool hit — verify via timing
         and ContainerAPIClient call count)
@@ -181,9 +205,11 @@ T5.2.10 kill -9 on proxy → sparsebundle left attached (expected) → gnucash-m
         detects existing mount and re-attaches cleanly or errors clearly
 T5.2.11 Simulate sleep/wake: stop container externally while pool holds handle →
         next tool call detects stale handle, starts fresh container, succeeds (KU-11)
-T5.2.12 Claude Desktop shows gnucash-myproject as connected after gnucash-mcp start
-        (manual; record in TEST_RESULTS.md)
-T5.2.13 CoWork session can call get_project_summary() via SDK bridge (manual)
+T5.2.12 gnucash-mcp install writes correct claude_desktop_config.json command entry
+        (not streamable-http); entry points to gnucash-mcp binary with --stdio flag
+T5.2.13 Claude Desktop shows gnucash-myproject as connected after gnucash-mcp install
+        + Claude Desktop restart (manual; record in TEST_RESULTS.md)
+T5.2.14 CoWork session can call get_project_summary() via SDK bridge (manual)
 ```
 
 ---
@@ -239,7 +265,7 @@ file that can be opened directly in GnuCash for recovery.
 T5.4.1  createBackup produces a .pre-YYYYMMDD-HHMMSS.gnucash file alongside book
 T5.4.2  backup file content matches book at time of copy (hash comparison)
 T5.4.3  createBackup completes in < 500ms on a book file of any size (APFS CoW)
-T5.4.4  pruneBackups(keepCount: 3) leaves exactly 3 .pre-*.gnucash files;
+T5.4.4  pruneBackups(keepCount: 10) leaves exactly 10 .pre-*.gnucash files;
         the live book and other files are unaffected
 T5.4.5  Restore drill (manual, document in TEST_RESULTS.md):
         Post a bad transaction → proxy creates backup → post another transaction →
