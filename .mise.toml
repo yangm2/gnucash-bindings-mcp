@@ -102,6 +102,15 @@ container run --rm \
   -c "cd /src && uv run --active --frozen pytest tests/ -v"
 """
 
+[tasks.swiftfmt]
+description = "Format Swift code"
+run = "swiftformat --verbose {{config_root}}/proxy"
+
+[tasks.swiftlint]
+description = "Lint Swift code"
+depends = ["swiftfmt"]
+run = "swiftlint lint --fix {{config_root}}/proxy"
+
 # ── runtime ───────────────────────────────────────────────────────────────────
 
 [tasks.run]

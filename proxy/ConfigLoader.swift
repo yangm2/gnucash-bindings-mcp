@@ -56,7 +56,7 @@ enum ConfigError: Error {
     case validationFailed(String)
 }
 
-// Load TOML from path (or env override) and decode into BudgetsConfig
+/// Load TOML from path (or env override) and decode into BudgetsConfig
 func loadBudgetsConfig(from path: String?) throws -> BudgetsConfig {
     let fm = FileManager.default
     let configPath: String
