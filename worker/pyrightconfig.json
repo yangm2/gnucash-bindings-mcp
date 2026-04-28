@@ -3,6 +3,7 @@
   "pythonVersion": "3.14",
   "reportMissingImports": true,
   "reportMissingTypeStubs": false,
+  "reportMissingModuleSource": false,  // gnucash is a C extension; stubs in typings/ are intentional
   "reportGeneralTypeIssues": true,
   "reportOptionalMemberAccess": true,
   "reportOptionalSubscript": true,

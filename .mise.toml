@@ -55,7 +55,7 @@ container run --rm \
   --entrypoint bash \
   gnucash-mcp:dev \
   -c "cd /src && \
-  uv run ruff format gnucash_mcp scripts tests"
+  uv run --active ruff format gnucash_mcp scripts tests"
 """
 
 [tasks.lint]
@@ -71,8 +71,8 @@ container run --rm \
   --entrypoint bash \
   gnucash-mcp:dev \
   -c "cd /src && \
-    uv run ruff check --fix --no-cache gnucash_mcp scripts tests && \
-    uv run pyright gnucash_mcp scripts tests"
+    uv run --active ruff check --fix --no-cache gnucash_mcp scripts tests && \
+    uv run --active pyright gnucash_mcp scripts tests"
 """
 
 [tasks.init-book]
