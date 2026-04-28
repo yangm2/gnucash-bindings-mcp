@@ -63,9 +63,7 @@ class TestWalSessionHelper:
         void_transaction(guid, reason="WAL commit check")
 
         entries = wal.all_entries()
-        void_entry = next(
-            (e for e in reversed(entries) if e["type"] == "void_transaction"), None
-        )
+        void_entry = next((e for e in reversed(entries) if e["type"] == "void_transaction"), None)
         assert void_entry is not None
         assert void_entry["committed_at"] is not None
         assert void_entry["transaction_guid"] == guid
