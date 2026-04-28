@@ -1,1 +1,5 @@
-// Entry point — implemented in Phase 5 M5.2
+import ArgumentParser
+import Foundation
+
+// Entry point. Cannot use @main in main.swift — call directly instead.
+await GnuCashMCP.main()
