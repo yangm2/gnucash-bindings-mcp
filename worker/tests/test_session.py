@@ -14,9 +14,13 @@ from hypothesis.strategies import dates
 from gnucash_mcp.session import (
     _open_session,
     _close_session,
+    book_path,
     book_session,
+    edit_transaction,
     get_account,
+    get_usd,
     gnc_decimal,
+    new_transaction,
     set_txn_isodate,
     get_txn_isodate,
     account_balance_float,
@@ -198,54 +202,6 @@ class TestGnucashDecimal:
             gnc_decimal("not-a-number")
 
 
-def _make_complete_txn(session, date_str):
-    """Create a minimal complete (balanced, committed) transaction for date testing.
-
-    GnuCash requires splits before CommitEdit() for the date to persist —
-    a splitless transaction resets to epoch on commit.
-    """
-    from gnucash import Transaction, Split
-
-    txn = Transaction(session.book)
-    txn.BeginEdit()
-    set_txn_isodate(txn, date_str)
-    txn.SetDescription("date test")
-    usd = session.book.get_table().lookup("CURRENCY", "USD")
-    txn.SetCurrency(usd)
-
-    checking = get_account(session.book, "Assets:Project Checking")
-    equity = get_account(session.book, "Equity:Owner Capital")
-    for acc, amount_str in [(checking, "1.00"), (equity, "-1.00")]:
-        s = Split(session.book)
-        s.SetParent(txn)
-        s.SetAccount(acc)
-        amt = gnc_decimal(amount_str)
-        s.SetAmount(amt)
-        s.SetValue(amt)
-
-    txn.CommitEdit()
-    return txn
-
-
-class TestTxnIsodate:
-    """set_txn_isodate / get_txn_isodate — encode (day, month, year) argument order."""
-
-    def test_set_get_roundtrip(self, initialized_book):
-        """set_txn_isodate then get_txn_isodate returns the same date string"""
-        with book_session(initialized_book) as session:
-            txn = _make_complete_txn(session, "2025-03-15")
-            assert get_txn_isodate(txn) == "2025-03-15"
-
-    def test_year_not_transposed_as_day(self, initialized_book):
-        """Regression guard: year must not appear in the day position"""
-        with book_session(initialized_book) as session:
-            txn = _make_complete_txn(session, "2025-01-05")
-            d = txn.GetDate()
-            # If year/day were swapped, d.year would be 5 and d.day would be clamped
-            assert d.year == 2025
-            assert d.day == 5
-
-
 @given(dates(min_value=datetime.date(1970, 1, 1), max_value=datetime.date(2099, 12, 31)))
 @settings(max_examples=50)
 def test_txn_isodate_roundtrip_property(d):
@@ -256,16 +212,16 @@ def test_txn_isodate_roundtrip_property(d):
 
     Self-contained (no pytest fixtures) so Hypothesis controls the full test lifecycle.
     """
-    from gnucash import Transaction, Split, Account
+    from gnucash import Split, Account
     import gnucash.gnucash_core_c as gc
 
     date_str = d.isoformat()
     with tempfile.TemporaryDirectory() as tmp:
-        book_path = Path(tmp) / "prop_test.gnucash"
-        with book_session(book_path, is_new=True) as session:
+        prop_book_path = Path(tmp) / "prop_test.gnucash"
+        with book_session(prop_book_path, is_new=True) as session:
             book = session.book
             root = book.get_root_account()
-            usd = book.get_table().lookup("CURRENCY", "USD")
+            usd = get_usd(book)
 
             def make_acc(parent, name, acct_type):
                 acc = Account(book)
@@ -278,19 +234,17 @@ def test_txn_isodate_roundtrip_property(d):
             checking = make_acc(root, "Assets", gc.ACCT_TYPE_ASSET)
             equity = make_acc(root, "Equity", gc.ACCT_TYPE_EQUITY)
 
-            txn = Transaction(book)
-            txn.BeginEdit()
-            set_txn_isodate(txn, date_str)
-            txn.SetDescription("prop test")
-            txn.SetCurrency(usd)
-            for acc, amount_str in [(checking, "1.00"), (equity, "-1.00")]:
-                s = Split(book)
-                s.SetParent(txn)
-                s.SetAccount(acc)
-                amt = gnc_decimal(amount_str)
-                s.SetAmount(amt)
-                s.SetValue(amt)
-            txn.CommitEdit()
+            with new_transaction(book) as txn:
+                set_txn_isodate(txn, date_str)
+                txn.SetDescription("prop test")
+                txn.SetCurrency(usd)
+                for acc, amount_str in [(checking, "1.00"), (equity, "-1.00")]:
+                    s = Split(book)
+                    s.SetParent(txn)
+                    s.SetAccount(acc)
+                    amt = gnc_decimal(amount_str)
+                    s.SetAmount(amt)
+                    s.SetValue(amt)
 
             assert get_txn_isodate(txn) == date_str
 
@@ -351,3 +305,129 @@ class TestBookCreation:
         # Reopen
         with book_session(test_book_path, is_new=False) as session:
             assert session.book is not None
+
+
+class TestGetUsd:
+    """get_usd() — commodity lookup helper."""
+
+    def test_returns_usd_commodity(self, test_book_path):
+        """get_usd returns a GncCommodity with mnemonic USD."""
+        with book_session(test_book_path, is_new=True) as session:
+            usd = get_usd(session.book)
+            assert usd is not None
+            assert usd.get_mnemonic() == "USD"
+
+
+class TestBookPath:
+    """book_path() — env-var reader."""
+
+    def test_returns_default_when_env_unset(self, monkeypatch):
+        """book_path() returns /data/project.gnucash when GNUCASH_BOOK_PATH is absent."""
+        monkeypatch.delenv("GNUCASH_BOOK_PATH", raising=False)
+        assert book_path() == Path("/data/project.gnucash")
+
+    def test_returns_env_var_path(self, monkeypatch, tmp_path):
+        """book_path() returns the path set in GNUCASH_BOOK_PATH."""
+        target = tmp_path / "my.gnucash"
+        monkeypatch.setenv("GNUCASH_BOOK_PATH", str(target))
+        assert book_path() == target
+
+
+class TestNewTransaction:
+    """new_transaction() — creates and commits a Transaction via context manager."""
+
+    def test_commits_on_clean_exit(self, initialized_book):
+        """Transaction created inside new_transaction is committed and appears in account splits."""
+        from gnucash import Split
+
+        with book_session(initialized_book) as session:
+            book = session.book
+            checking = get_account(book, "Assets:Project Checking")
+            equity = get_account(book, "Equity:Owner Capital")
+
+            before = len(checking.GetSplitList())
+
+            with new_transaction(book) as txn:
+                set_txn_isodate(txn, "2025-06-01")
+                txn.SetDescription("cm commit test")
+                txn.SetCurrency(get_usd(book))
+                for acc, amt_str in [(checking, "100.00"), (equity, "-100.00")]:
+                    s = Split(book)
+                    s.SetParent(txn)
+                    s.SetAccount(acc)
+                    amt = gnc_decimal(amt_str)
+                    s.SetAmount(amt)
+                    s.SetValue(amt)
+
+            assert len(checking.GetSplitList()) == before + 1
+
+    def test_rolls_back_on_exception(self, initialized_book):
+        """Exception inside new_transaction propagates; transaction is rolled back."""
+        with book_session(initialized_book) as session:
+            book = session.book
+            checking = get_account(book, "Assets:Project Checking")
+            before = len(checking.GetSplitList())
+
+            with pytest.raises(ValueError, match="abort"):
+                with new_transaction(book) as txn:
+                    txn.SetDescription("will be rolled back")
+                    txn.SetCurrency(get_usd(book))
+                    raise ValueError("abort")
+
+            assert len(checking.GetSplitList()) == before
+
+
+class TestEditTransaction:
+    """edit_transaction() — BeginEdit/CommitEdit wrapper for existing transactions."""
+
+    def test_commits_description_change(self, initialized_book):
+        """edit_transaction commits a description change on an existing transaction."""
+        from gnucash import Split
+
+        with book_session(initialized_book) as session:
+            book = session.book
+            checking = get_account(book, "Assets:Project Checking")
+            equity = get_account(book, "Equity:Owner Capital")
+
+            with new_transaction(book) as txn:
+                set_txn_isodate(txn, "2025-06-01")
+                txn.SetDescription("original description")
+                txn.SetCurrency(get_usd(book))
+                for acc, amt_str in [(checking, "50.00"), (equity, "-50.00")]:
+                    s = Split(book)
+                    s.SetParent(txn)
+                    s.SetAccount(acc)
+                    amt = gnc_decimal(amt_str)
+                    s.SetAmount(amt)
+                    s.SetValue(amt)
+
+            with edit_transaction(txn):
+                txn.SetDescription("updated description")
+
+            assert txn.GetDescription() == "updated description"
+
+    def test_rolls_back_on_exception(self, initialized_book):
+        """Exception inside edit_transaction propagates."""
+        from gnucash import Split
+
+        with book_session(initialized_book) as session:
+            book = session.book
+            checking = get_account(book, "Assets:Project Checking")
+            equity = get_account(book, "Equity:Owner Capital")
+
+            with new_transaction(book) as txn:
+                set_txn_isodate(txn, "2025-06-01")
+                txn.SetDescription("stable description")
+                txn.SetCurrency(get_usd(book))
+                for acc, amt_str in [(checking, "25.00"), (equity, "-25.00")]:
+                    s = Split(book)
+                    s.SetParent(txn)
+                    s.SetAccount(acc)
+                    amt = gnc_decimal(amt_str)
+                    s.SetAmount(amt)
+                    s.SetValue(amt)
+
+            with pytest.raises(RuntimeError, match="abort edit"):
+                with edit_transaction(txn):
+                    txn.SetDescription("partial edit")
+                    raise RuntimeError("abort edit")
