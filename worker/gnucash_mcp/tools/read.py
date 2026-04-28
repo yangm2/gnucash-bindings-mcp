@@ -198,6 +198,8 @@ def get_transaction(tx_id: str) -> dict:
 
 def get_project_summary() -> dict:
     """Return summary balances for the main project accounts."""
+    from gnucash_mcp.tools.eco import _load_ecos
+
     with book_session(book_path()) as session:
         book = session.book
 
@@ -210,13 +212,83 @@ def get_project_summary() -> dict:
             except AccountNotFoundError:
                 return None
 
-        return {
+        summary: dict[str, object] = {
             "checking_balance": bal("Assets:Project Checking"),
             "owner_capital": bal("Equity:Owner Capital"),
             "interest_income": bal("Income:Interest Income"),
             "total_expenses": bal("Expenses", total=True),
             "total_ap": bal("Liabilities", total=True),
         }
+
+    ecos = _load_ecos()
+    pending_exposure = sum(float(e["amount"]) for e in ecos if e["status"] == "pending")
+    summary["budget_status"] = {"pending_eco_exposure": f"{pending_exposure:.2f}"}
+    return summary
+
+
+def get_budget_vs_actual(include_ecos: bool = True) -> dict:
+    """Return budget vs actual comparison across all budgeted accounts.
+
+    If include_ecos=True, splits out original_contract vs approved ECO adjustments.
+    Returns {"error": ...} if no budget exists.
+    """
+    from decimal import Decimal
+    from gnucash_mcp.tools.budget import _load_budgets, _compute_actuals
+    from gnucash_mcp.tools.eco import _load_ecos
+
+    budgets = _load_budgets()
+    if not budgets:
+        return {"error": "No budget found in book"}
+    budget = budgets[0]
+
+    ecos = _load_ecos()
+    approved_ecos: dict[str, Decimal] = {}
+    for eco in ecos:
+        if eco["status"] == "approved":
+            acct = eco["budget_account"]
+            delta = Decimal(eco["amount"])
+            if eco["direction"] == "additive":
+                approved_ecos[acct] = approved_ecos.get(acct, Decimal(0)) + delta
+            else:
+                approved_ecos[acct] = approved_ecos.get(acct, Decimal(0)) - delta
+
+    with book_session(book_path()) as session:
+        book = session.book
+        by_account: list[dict] = []
+        originals: list[Decimal] = []
+        for acct_path, budgeted_str in budget.get("accounts", {}).items():
+            revised = Decimal(budgeted_str)
+            eco_adj = approved_ecos.get(acct_path, Decimal(0))
+            original = revised - eco_adj
+            originals.append(original)
+            committed, paid = _compute_actuals(book, acct_path)
+            entry: dict = {
+                "account": acct_path,
+                "budgeted": f"{revised:.2f}",
+                "committed": f"{committed:.2f}",
+                "paid": f"{paid:.2f}",
+                "variance": f"{revised - Decimal(str(committed)):.2f}",
+            }
+            if include_ecos:
+                entry["original"] = f"{original:.2f}"
+                entry["eco_adjustment"] = f"{eco_adj:.2f}"
+            by_account.append(entry)
+
+    total_revised = sum(Decimal(a["budgeted"]) for a in by_account)
+    total_committed = sum(Decimal(a["committed"]) for a in by_account)
+    total_original = sum(originals)
+    total_eco_adj = sum(approved_ecos.values())
+
+    summary: dict = {
+        "original_contract": f"{total_original:.2f}",
+        "committed": f"{total_committed:.2f}",
+        "remaining": f"{total_revised - total_committed:.2f}",
+    }
+    if include_ecos:
+        summary["approved_ecos"] = f"{total_eco_adj:.2f}"
+        summary["revised_budget"] = f"{total_revised:.2f}"
+
+    return {"summary": summary, "by_account": by_account}
 
 
 def get_audit_log(

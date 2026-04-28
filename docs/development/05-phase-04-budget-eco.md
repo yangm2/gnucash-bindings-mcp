@@ -343,6 +343,68 @@ T4.3.6  Professional fees (Architecture, Structural, MEP) appear in budget_vs_ac
 
 ---
 
+---
+
+### Implementation learnings
+
+**`GncBudget` is not exposed by `python3-gnucash`.**
+The design doc assumed budgets would use GnuCash's native `GncBudget` objects.
+In practice, `python3-gnucash` (GnuCash 5.14 on Ubuntu 26.04) does not wrap the
+budget API — `from gnucash import GncBudget` raises `ImportError`, and
+`Book.get_budgets()` does not exist. Both budget data and ECO state are stored in
+companion JSONL files:
+- `{book}.budget.jsonl` — one JSON object per budget; amounts as a `{account_path: amount_str}` dict
+- `{book}.eco.jsonl` — one JSON object per ECO; immutable append, replaced on update
+
+This is functionally equivalent to KVP/slots from the tool layer's perspective.
+Actuals (`committed`/`paid`) are still computed live from GnuCash transactions.
+
+**KVP/slots are also not straightforwardly accessible.**
+The design doc suggested storing ECO metadata as book KVP slots. Neither
+`book.get_slots()` nor any slot-write API is exposed in the Python bindings.
+The JSONL sidecar approach is equally durable (it travels with the book file)
+and is simpler to query and update.
+
+**`receive_invoice` should auto-create AP accounts.**
+The Phase 4 tests post invoices for construction trade vendors (`Pacific Crest
+Electrical`, `Sparks Electric`) that are not in the initial chart. Rather than
+requiring callers to run `vendor_add` before every invoice, `receive_invoice`
+now creates the `Liabilities:AP — {vendor}` account on first use. This matches
+how real-world accounting works and removes a mandatory ordering dependency
+between the vendor and invoice workflows.
+
+**ECO budget adjustment uses JSONL, not a GnuCash budget mutation.**
+`eco_approve` updates the `accounts` dict in `{book}.budget.jsonl` directly
+(add/subtract the ECO amount). `eco_void` reverses this. The GnuCash book only
+stores the Change Orders transaction; budget numbers live entirely in the JSONL.
+`get_budget_vs_actual` recomputes `original_contract` by subtracting approved
+ECO adjustments from the current budget amount, making `include_ecos=True/False`
+produce consistent results even after multiple approve/void cycles.
+
+**`_compute_actuals` paid-attribution limitation.**
+`paid` for a budget account is computed by finding all AP accounts that appear
+in transactions touching that expense account, then summing their positive splits.
+This is correct when each vendor bills exactly one expense account. If a vendor
+bills multiple expense accounts, their payments are attributed to all of those
+accounts (double-counting). This is acceptable for the current project structure
+(one trade per vendor) and noted as a known limitation.
+
+**Property tests need per-example isolation.**
+Hypothesis calls the test body multiple times. A shared `full_book` pytest
+fixture accumulates state across examples (duplicate ECO numbers, stale budget
+totals). The fix is an inline `_fresh_book()` context manager using
+`tempfile.mkdtemp()` — each Hypothesis example gets a completely independent
+book and WAL file.
+
+**`RuleBasedStateMachine` is incompatible with pytest fixtures.**
+The initial design for property-testing the ECO state machine used Hypothesis's
+`RuleBasedStateMachine`. State machine classes become `unittest.TestCase`
+subclasses, which cannot receive pytest fixtures. Replaced with
+`@given(st.lists(st.sampled_from(["approve", "void"]), ...))` and a plain
+`_model_transition` dict — simpler and fixture-free.
+
+---
+
 ### Phase 4 exit criteria
 
 - Full GC budget entry workflow validated: create budget → set all line items →

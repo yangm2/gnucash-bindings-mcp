@@ -13,9 +13,8 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import given, settings
 from hypothesis import strategies as st
-from hypothesis.stateful import RuleBasedStateMachine, initialize, invariant, rule
 
 import gnucash.gnucash_core_c as gc
 from gnucash_mcp import wal
@@ -112,8 +111,13 @@ def test_approve_then_void_is_net_zero(amount, direction):
         )
         bal_before = get_account_balance("Expenses:Change Orders:Electrical")["balance"]
 
-        eco_create("CO-001", description="Round-trip test", direction=direction,
-                   amount=amount, budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="Round-trip test",
+            direction=direction,
+            amount=amount,
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
         eco_approve("CO-001", date=TEST_DATE)
         eco_void("CO-001", reason="Round-trip void")
 
@@ -146,8 +150,13 @@ def test_approve_changes_budget_by_exact_amount(amount, direction):
             )
         )
 
-        eco_create("CO-001", description="Delta test", direction=direction,
-                   amount=amount, budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="Delta test",
+            direction=direction,
+            amount=amount,
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
         eco_approve("CO-001", date=TEST_DATE)
 
         after = Decimal(
@@ -199,8 +208,13 @@ def test_state_machine_transitions(actions):
         budget_create("GC Budget", period_start="2025-09-01")
         budget_set_amount("GC Budget", ELECTRICAL_ACCOUNT, "100000.00")
 
-        eco_create("CO-001", description="State machine test", direction="additive",
-                   amount="1000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="State machine test",
+            direction="additive",
+            amount="1000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
 
         model_status = "pending"
 

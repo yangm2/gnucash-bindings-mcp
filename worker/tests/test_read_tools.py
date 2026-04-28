@@ -158,7 +158,7 @@ class TestReadToolsBasics:
             "total_expenses",
             "total_ap",
         }
-        assert set(result.keys()) == required_fields
+        assert required_fields <= set(result.keys())
 
         # Verify types
         for key in required_fields:

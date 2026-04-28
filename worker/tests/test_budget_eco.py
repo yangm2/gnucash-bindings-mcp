@@ -197,7 +197,9 @@ class TestBudgetUpdateDelete:
         budget_create("To Delete", period_start="2025-09-01")
         budget_set_amount("To Delete", ELECTRICAL_ACCOUNT, "45000.00")
 
-        receive_invoice(TEST_DATE, "Pacific Crest Electrical", "PCE-001", "5000.00", ELECTRICAL_ACCOUNT)
+        receive_invoice(
+            TEST_DATE, "Pacific Crest Electrical", "PCE-001", "5000.00", ELECTRICAL_ACCOUNT
+        )
 
         result = budget_delete("To Delete", confirm=True)
         assert result["status"] == "ok"
@@ -206,6 +208,7 @@ class TestBudgetUpdateDelete:
         assert not any(b["name"] == "To Delete" for b in budgets)
 
         from gnucash_mcp.tools.read import get_account_balance
+
         bal = get_account_balance(ELECTRICAL_ACCOUNT)
         assert float(bal["balance"]) == 5000.00
 
@@ -223,9 +226,13 @@ class TestBudgetFullWorkflow:
         budget_set_amount("GC Pre-Construction", "Expenses:Construction:Plumbing", "28000.00")
         budget_set_amount("GC Pre-Construction", "Expenses:Construction:HVAC", "22000.00")
 
-        receive_invoice(TEST_DATE, "Pacific Crest Electrical", "PCE-001", "15000.00", ELECTRICAL_ACCOUNT)
+        receive_invoice(
+            TEST_DATE, "Pacific Crest Electrical", "PCE-001", "15000.00", ELECTRICAL_ACCOUNT
+        )
         pay_invoice(TEST_DATE_2, "Pacific Crest Electrical", "PCE-001", "15000.00")
-        receive_invoice(TEST_DATE, "Summit HVAC", "SH-001", "10000.00", "Expenses:Construction:HVAC")
+        receive_invoice(
+            TEST_DATE, "Summit HVAC", "SH-001", "10000.00", "Expenses:Construction:HVAC"
+        )
 
         detail = budget_get("GC Pre-Construction")
         amounts = {a["account"]: a for a in detail["accounts"]}
@@ -249,7 +256,9 @@ class TestBudgetFullWorkflow:
         budget_create("GC Budget", period_start="2025-09-01")
         budget_set_amount("GC Budget", ELECTRICAL_ACCOUNT, "45000.00")
 
-        receive_invoice(TEST_DATE, "Pacific Crest Electrical", "PCE-001", "10000.00", ELECTRICAL_ACCOUNT)
+        receive_invoice(
+            TEST_DATE, "Pacific Crest Electrical", "PCE-001", "10000.00", ELECTRICAL_ACCOUNT
+        )
         receive_invoice(TEST_DATE, "Sparks Electric", "SE-001", "8000.00", ELECTRICAL_ACCOUNT)
 
         detail = budget_get("GC Budget")
@@ -283,8 +292,13 @@ class TestEcoCreate:
 
     def test_eco_list_shows_new_eco(self, full_book):
         """T4.2.2: eco_list returns newly created ECO with correct fields."""
-        eco_create("CO-001", description="Recessed lighting", direction="additive",
-                   amount="5000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="Recessed lighting",
+            direction="additive",
+            amount="5000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
 
         ecos = eco_list()
         co = next((e for e in ecos if e["number"] == "CO-001"), None)
@@ -295,12 +309,27 @@ class TestEcoCreate:
 
     def test_eco_list_status_filter_excludes_others(self, full_book):
         """T4.2.3: eco_list(status='pending') excludes approved and voided ECOs."""
-        eco_create("CO-001", description="Pending CO", direction="additive",
-                   amount="5000.00", budget_account=ELECTRICAL_ACCOUNT)
-        eco_create("CO-002", description="To approve", direction="additive",
-                   amount="3000.00", budget_account=ELECTRICAL_ACCOUNT)
-        eco_create("CO-003", description="To void", direction="additive",
-                   amount="1000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="Pending CO",
+            direction="additive",
+            amount="5000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
+        eco_create(
+            "CO-002",
+            description="To approve",
+            direction="additive",
+            amount="3000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
+        eco_create(
+            "CO-003",
+            description="To void",
+            direction="additive",
+            amount="1000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
 
         fund_project(TEST_DATE, "200000.00")
         budget_create("GC Budget", period_start="2025-09-01")
@@ -346,8 +375,13 @@ class TestEcoApprove:
         budget_create("GC Budget", period_start="2025-09-01")
         budget_set_amount("GC Budget", ELECTRICAL_ACCOUNT, "45000.00")
 
-        eco_create("CO-001", description="Recessed lighting", direction="additive",
-                   amount="5000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="Recessed lighting",
+            direction="additive",
+            amount="5000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
 
         result = eco_approve("CO-001", date=TEST_DATE)
         assert result["status"] == "ok"
@@ -361,8 +395,13 @@ class TestEcoApprove:
         budget_create("GC Budget", period_start="2025-09-01")
         budget_set_amount("GC Budget", ELECTRICAL_ACCOUNT, "45000.00")
 
-        eco_create("CO-001", description="Recessed lighting", direction="additive",
-                   amount="5000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="Recessed lighting",
+            direction="additive",
+            amount="5000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
         eco_approve("CO-001", date=TEST_DATE)
 
         detail = budget_get("GC Budget")
@@ -377,8 +416,13 @@ class TestEcoApprove:
         budget_create("GC Budget", period_start="2025-09-01")
         budget_set_amount("GC Budget", ELECTRICAL_ACCOUNT, "45000.00")
 
-        eco_create("CO-002", description="Remove under-cabinet lighting",
-                   direction="deductive", amount="2000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-002",
+            description="Remove under-cabinet lighting",
+            direction="deductive",
+            amount="2000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
         eco_approve("CO-002", date=TEST_DATE)
 
         co_elec = get_account_balance("Expenses:Change Orders:Electrical")
@@ -390,8 +434,13 @@ class TestEcoApprove:
         budget_create("GC Budget", period_start="2025-09-01")
         budget_set_amount("GC Budget", ELECTRICAL_ACCOUNT, "45000.00")
 
-        eco_create("CO-002", description="Remove under-cabinet lighting",
-                   direction="deductive", amount="2000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-002",
+            description="Remove under-cabinet lighting",
+            direction="deductive",
+            amount="2000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
         eco_approve("CO-002", date=TEST_DATE)
 
         detail = budget_get("GC Budget")
@@ -406,8 +455,13 @@ class TestEcoVoid:
         """T4.2.9: eco_void(pending) changes status; no transaction posted."""
         from gnucash_mcp.tools.read import get_account_balance
 
-        eco_create("CO-001", description="Pending CO", direction="additive",
-                   amount="5000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="Pending CO",
+            direction="additive",
+            amount="5000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
 
         result = eco_void("CO-001", reason="Owner decided against it")
         assert result["status"] == "ok"
@@ -426,8 +480,13 @@ class TestEcoVoid:
         budget_create("GC Budget", period_start="2025-09-01")
         budget_set_amount("GC Budget", ELECTRICAL_ACCOUNT, "45000.00")
 
-        eco_create("CO-001", description="Recessed lighting", direction="additive",
-                   amount="5000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="Recessed lighting",
+            direction="additive",
+            amount="5000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
         eco_approve("CO-001", date=TEST_DATE)
 
         eco_void("CO-001", reason="GC withdrew the CO")
@@ -441,8 +500,13 @@ class TestEcoVoid:
 
     def test_void_records_reason(self, full_book):
         """T4.2.11: eco_void records reason; ECO visible in eco_list with void status."""
-        eco_create("CO-001", description="Pending CO", direction="additive",
-                   amount="5000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="Pending CO",
+            direction="additive",
+            amount="5000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
         eco_void("CO-001", reason="GC withdrew the CO")
 
         detail = eco_get("CO-001")
@@ -464,8 +528,13 @@ class TestEcoStateTransitionErrors:
         budget_create("GC Budget", period_start="2025-09-01")
         budget_set_amount("GC Budget", ELECTRICAL_ACCOUNT, "45000.00")
 
-        eco_create("CO-001", description="Recessed lighting", direction="additive",
-                   amount="5000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="Recessed lighting",
+            direction="additive",
+            amount="5000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
         eco_approve("CO-001", date=TEST_DATE)
 
         with pytest.raises(ValueError):
@@ -473,8 +542,13 @@ class TestEcoStateTransitionErrors:
 
     def test_approve_voided_eco_raises(self, full_book):
         """eco_approve on a voided ECO raises ValueError."""
-        eco_create("CO-001", description="Voided CO", direction="additive",
-                   amount="5000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="Voided CO",
+            direction="additive",
+            amount="5000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
         eco_void("CO-001", reason="Not needed")
 
         with pytest.raises(ValueError):
@@ -482,8 +556,13 @@ class TestEcoStateTransitionErrors:
 
     def test_void_already_voided_raises(self, full_book):
         """eco_void on an already-voided ECO raises ValueError."""
-        eco_create("CO-001", description="CO to double-void", direction="additive",
-                   amount="5000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="CO to double-void",
+            direction="additive",
+            amount="5000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
         eco_void("CO-001", reason="First void")
 
         with pytest.raises(ValueError):
@@ -491,12 +570,22 @@ class TestEcoStateTransitionErrors:
 
     def test_duplicate_eco_number_raises(self, full_book):
         """eco_create with a duplicate number raises ValueError."""
-        eco_create("CO-001", description="Original", direction="additive",
-                   amount="5000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="Original",
+            direction="additive",
+            amount="5000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
 
         with pytest.raises(ValueError):
-            eco_create("CO-001", description="Duplicate", direction="additive",
-                       amount="3000.00", budget_account=ELECTRICAL_ACCOUNT)
+            eco_create(
+                "CO-001",
+                description="Duplicate",
+                direction="additive",
+                amount="3000.00",
+                budget_account=ELECTRICAL_ACCOUNT,
+            )
 
 
 class TestEcoVoidDeductive:
@@ -510,8 +599,13 @@ class TestEcoVoidDeductive:
         budget_create("GC Budget", period_start="2025-09-01")
         budget_set_amount("GC Budget", ELECTRICAL_ACCOUNT, "45000.00")
 
-        eco_create("CO-002", description="Remove under-cabinet lighting",
-                   direction="deductive", amount="2000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-002",
+            description="Remove under-cabinet lighting",
+            direction="deductive",
+            amount="2000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
         eco_approve("CO-002", date=TEST_DATE)
 
         # After approve: balance should be -2000 (credit), budget 43000
@@ -538,19 +632,25 @@ class TestEcoListTotals:
         budget_create("GC Budget", period_start="2025-09-01")
         budget_set_amount("GC Budget", ELECTRICAL_ACCOUNT, "45000.00")
 
-        eco_create("CO-001", description="Approved CO", direction="additive",
-                   amount="5000.00", budget_account=ELECTRICAL_ACCOUNT)
-        eco_create("CO-002", description="Pending CO", direction="additive",
-                   amount="8000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="Approved CO",
+            direction="additive",
+            amount="5000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
+        eco_create(
+            "CO-002",
+            description="Pending CO",
+            direction="additive",
+            amount="8000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
         eco_approve("CO-001", date=TEST_DATE)
 
         summary = eco_list()
-        approved_total = sum(
-            float(e["amount"]) for e in summary if e["status"] == "approved"
-        )
-        pending_total = sum(
-            float(e["amount"]) for e in summary if e["status"] == "pending"
-        )
+        approved_total = sum(float(e["amount"]) for e in summary if e["status"] == "approved")
+        pending_total = sum(float(e["amount"]) for e in summary if e["status"] == "pending")
         assert approved_total == 5000.00
         assert pending_total == 8000.00
 
@@ -564,10 +664,17 @@ class TestEcoFullWorkflow:
         budget_create("GC Pre-Construction", period_start="2025-09-01")
         budget_set_amount("GC Pre-Construction", ELECTRICAL_ACCOUNT, "45000.00")
 
-        receive_invoice(TEST_DATE, "Pacific Crest Electrical", "PCE-001", "22500.00", ELECTRICAL_ACCOUNT)
+        receive_invoice(
+            TEST_DATE, "Pacific Crest Electrical", "PCE-001", "22500.00", ELECTRICAL_ACCOUNT
+        )
 
-        eco_create("CO-001", description="Recessed lighting in kitchen",
-                   direction="additive", amount="5000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="Recessed lighting in kitchen",
+            direction="additive",
+            amount="5000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
         eco_approve("CO-001", date=TEST_DATE)
 
         detail = budget_get("GC Pre-Construction")
@@ -600,7 +707,9 @@ class TestGetBudgetVsActual:
         budget_set_amount("GC Budget", ELECTRICAL_ACCOUNT, "45000.00")
         budget_set_amount("GC Budget", FRAMING_ACCOUNT, "32000.00")
 
-        receive_invoice(TEST_DATE, "Pacific Crest Electrical", "PCE-001", "15000.00", ELECTRICAL_ACCOUNT)
+        receive_invoice(
+            TEST_DATE, "Pacific Crest Electrical", "PCE-001", "15000.00", ELECTRICAL_ACCOUNT
+        )
 
         result = get_budget_vs_actual()
         assert "error" not in result
@@ -616,8 +725,13 @@ class TestGetBudgetVsActual:
         budget_create("GC Budget", period_start="2025-09-01")
         budget_set_amount("GC Budget", ELECTRICAL_ACCOUNT, "45000.00")
 
-        eco_create("CO-001", description="Recessed lighting", direction="additive",
-                   amount="5000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="Recessed lighting",
+            direction="additive",
+            amount="5000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
         eco_approve("CO-001", date=TEST_DATE)
 
         result = get_budget_vs_actual(include_ecos=True)
@@ -634,8 +748,13 @@ class TestGetBudgetVsActual:
         budget_create("GC Budget", period_start="2025-09-01")
         budget_set_amount("GC Budget", ELECTRICAL_ACCOUNT, "45000.00")
 
-        eco_create("CO-001", description="Recessed lighting", direction="additive",
-                   amount="5000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="Recessed lighting",
+            direction="additive",
+            amount="5000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
         eco_approve("CO-001", date=TEST_DATE)
 
         result = get_budget_vs_actual(include_ecos=False)
@@ -649,8 +768,13 @@ class TestGetBudgetVsActual:
         budget_create("GC Budget", period_start="2025-09-01")
         budget_set_amount("GC Budget", ELECTRICAL_ACCOUNT, "45000.00")
 
-        eco_create("CO-001", description="Pending CO", direction="additive",
-                   amount="8000.00", budget_account=ELECTRICAL_ACCOUNT)
+        eco_create(
+            "CO-001",
+            description="Pending CO",
+            direction="additive",
+            amount="8000.00",
+            budget_account=ELECTRICAL_ACCOUNT,
+        )
 
         summary = get_project_summary()
         assert "budget_status" in summary

@@ -15,10 +15,13 @@ Book path from GNUCASH_BOOK_PATH env var.
 
 from contextlib import contextmanager
 from decimal import Decimal
+from typing import Callable
 
 from gnucash import Split
+import gnucash.gnucash_core_c as gc
 
 from gnucash_mcp.session import (
+    AccountNotFoundError,
     book_path,
     book_session,
     edit_transaction,
@@ -63,10 +66,23 @@ def _post_transaction(
     return txn, txn.GetGUID().to_string()
 
 
-def _wal_post(tool: str, payload: dict, date: str, description: str, splits: list) -> dict:
-    """WAL append → book session → post balanced transaction → WAL commit."""
+def _wal_post(
+    tool: str,
+    payload: dict,
+    date: str,
+    description: str,
+    splits: list,
+    account_setup: Callable | None = None,
+) -> dict:
+    """WAL append → book session → post balanced transaction → WAL commit.
+
+    account_setup(book): optional callback run inside the session before posting,
+    used to create accounts that may not exist yet (e.g. new vendor AP accounts).
+    """
     entry = wal.append(tool, payload)
     with book_session(book_path()) as session:
+        if account_setup is not None:
+            account_setup(session.book)
         _, guid = _post_transaction(session.book, date, description, splits, entry, tool)
     wal.mark_committed(entry["id"], transaction_guid=guid)
     return {"status": "ok", "transaction_guid": guid, "wal_id": entry["id"]}
@@ -137,10 +153,25 @@ def fund_project(date: str, amount: str, memo: str = "") -> dict:
 def receive_invoice(
     date: str, vendor: str, invoice_ref: str, amount: str, expense_account: str
 ) -> dict:
-    """Debit expense account, credit AP — vendor."""
+    """Debit expense account, credit AP — vendor. Creates AP account if new vendor."""
+    ap_path = f"Liabilities:AP — {vendor}"
+
+    def _ensure_ap(book) -> None:
+        try:
+            get_account(book, ap_path)
+        except AccountNotFoundError:
+            from gnucash import Account
+
+            liabilities = get_account(book, "Liabilities")
+            ap = Account(book)
+            ap.SetName(f"AP — {vendor}")
+            ap.SetType(gc.ACCT_TYPE_PAYABLE)
+            ap.SetCommodity(get_usd(book))
+            liabilities.append_child(ap)
+
     splits = [
         {"account_path": expense_account, "amount": amount, "memo": invoice_ref},
-        {"account_path": f"Liabilities:AP — {vendor}", "amount": f"-{amount}", "memo": invoice_ref},
+        {"account_path": ap_path, "amount": f"-{amount}", "memo": invoice_ref},
     ]
     return _wal_post(
         "receive_invoice",
@@ -154,6 +185,7 @@ def receive_invoice(
         date,
         f"Invoice {invoice_ref} — {vendor}",
         splits,
+        account_setup=_ensure_ap,
     )
 
 
