@@ -4,7 +4,7 @@ Tools for creating, renaming, moving, and deleting accounts, verifying the
 chart of accounts structure, and posting opening balance transactions.
 """
 
-from gnucash import Account, Transaction, Split
+from gnucash import Account, Split
 
 import gnucash.gnucash_core_c as gc
 
@@ -12,6 +12,7 @@ from gnucash_mcp.session import (
     AccountNotFoundError,
     book_path,
     book_session,
+    new_transaction,
     get_account,
     get_usd,
     gnc_decimal,
@@ -163,28 +164,25 @@ def book_set_opening_balance(account_path: str, amount: str, date: str) -> dict:
         target = get_account(book, account_path)
         ob_equity = _ensure_opening_balances(book)
 
-        usd = get_usd(book)
-        txn = Transaction(book)
-        txn.BeginEdit()
-        set_txn_isodate(txn, date)
-        txn.SetDescription(f"Opening balance — {account_path}")
-        txn.SetCurrency(usd)
+        with new_transaction(book) as txn:
+            set_txn_isodate(txn, date)
+            txn.SetDescription(f"Opening balance — {account_path}")
+            txn.SetCurrency(get_usd(book))
 
-        debit = Split(book)
-        debit.SetParent(txn)
-        debit.SetAccount(target)
-        amt = gnc_decimal(amount)
-        debit.SetAmount(amt)
-        debit.SetValue(amt)
+            debit = Split(book)
+            debit.SetParent(txn)
+            debit.SetAccount(target)
+            amt = gnc_decimal(amount)
+            debit.SetAmount(amt)
+            debit.SetValue(amt)
 
-        neg = gnc_decimal(f"-{amount}")
-        credit = Split(book)
-        credit.SetParent(txn)
-        credit.SetAccount(ob_equity)
-        credit.SetAmount(neg)
-        credit.SetValue(neg)
+            neg = gnc_decimal(f"-{amount}")
+            credit = Split(book)
+            credit.SetParent(txn)
+            credit.SetAccount(ob_equity)
+            credit.SetAmount(neg)
+            credit.SetValue(neg)
 
-        txn.CommitEdit()
         guid = txn.GetGUID().to_string()
 
     wal.mark_committed(entry["id"], transaction_guid=guid)

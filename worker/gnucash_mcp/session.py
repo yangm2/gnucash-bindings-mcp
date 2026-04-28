@@ -4,6 +4,8 @@ Public API:
   book_path() -> Path
   get_usd(book) -> GncCommodity
   book_session(path, is_new=False) -> contextmanager[Session]
+  new_transaction(book) -> contextmanager[Transaction]
+  edit_transaction(txn) -> contextmanager[Transaction]
   clear_stale_lock(path) -> None
   get_account(book, full_name) -> Account          raises AccountNotFoundError
   gnc_decimal(amount_str) -> GncNumeric
@@ -110,6 +112,33 @@ def book_session(path: Path, is_new: bool = False):
                 session.end()
             except Exception:
                 pass
+
+
+@contextmanager
+def new_transaction(book: Book):
+    """Context manager: create Transaction, BeginEdit → yield → CommitEdit or RollbackEdit."""
+    txn = Transaction(book)
+    txn.BeginEdit()
+    try:
+        yield txn
+    except Exception:
+        txn.RollbackEdit()
+        raise
+    else:
+        txn.CommitEdit()
+
+
+@contextmanager
+def edit_transaction(txn: Transaction):
+    """Context manager: BeginEdit an existing Transaction → yield → CommitEdit or RollbackEdit."""
+    txn.BeginEdit()
+    try:
+        yield txn
+    except Exception:
+        txn.RollbackEdit()
+        raise
+    else:
+        txn.CommitEdit()
 
 
 def get_account(book: Book, full_name: str):

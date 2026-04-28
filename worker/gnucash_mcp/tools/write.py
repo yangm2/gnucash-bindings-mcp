@@ -12,11 +12,12 @@ Book path from GNUCASH_BOOK_PATH env var.
 
 from decimal import Decimal
 
-from gnucash import Transaction, Split
+from gnucash import Split
 
 from gnucash_mcp.session import (
     book_path,
     book_session,
+    new_transaction,
     get_account,
     get_usd,
     gnc_decimal,
@@ -37,32 +38,30 @@ def _post_transaction(
     wal_entry: dict | None = None,
     tool_name: str | None = None,
 ):
-    txn = Transaction(book)
-    txn.BeginEdit()
-    set_txn_isodate(txn, date_str)
-    txn.SetDescription(description)
-    txn.SetCurrency(get_usd(book))
+    with new_transaction(book) as txn:
+        set_txn_isodate(txn, date_str)
+        txn.SetDescription(description)
+        txn.SetCurrency(get_usd(book))
 
-    for spec in splits:
-        acc = get_account(book, spec["account_path"])
-        split = Split(book)
-        split.SetParent(txn)
-        split.SetAccount(acc)
-        amount = gnc_decimal(spec["amount"])
-        split.SetAmount(amount)
-        split.SetValue(amount)
-        if spec.get("memo"):
-            split.SetMemo(spec["memo"])
+        for spec in splits:
+            acc = get_account(book, spec["account_path"])
+            split = Split(book)
+            split.SetParent(txn)
+            split.SetAccount(acc)
+            amount = gnc_decimal(spec["amount"])
+            split.SetAmount(amount)
+            split.SetValue(amount)
+            if spec.get("memo"):
+                split.SetMemo(spec["memo"])
 
-    if wal_entry is not None and tool_name is not None:
-        try:
-            txn.SetSlot("mcp-wal-id", wal_entry["id"])
-            txn.SetSlot("mcp-tool", tool_name)
-            txn.SetSlot("mcp-version", "1")
-        except Exception:
-            pass  # Slots are best-effort; never fail the transaction
+        if wal_entry is not None and tool_name is not None:
+            try:
+                txn.SetSlot("mcp-wal-id", wal_entry["id"])
+                txn.SetSlot("mcp-tool", tool_name)
+                txn.SetSlot("mcp-version", "1")
+            except Exception:
+                pass  # Slots are best-effort; never fail the transaction
 
-    txn.CommitEdit()
     return txn, txn.GetGUID().to_string()
 
 
