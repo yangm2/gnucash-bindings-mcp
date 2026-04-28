@@ -32,7 +32,7 @@ enum StaticResources {
             name: "Expected Chart of Accounts",
             description: "The MC-6 chart structure this book should match",
             mimeType: "text/markdown",
-        )
+        ),
     ]
 
     static func content(for uri: String) -> String? {

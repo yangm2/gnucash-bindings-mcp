@@ -41,7 +41,7 @@ final class ContainerAPIClient: Sendable {
             "run", "--rm", "-i",
             "-v", "\(ContainerAPIClient.mountPath):/data:rw",
             "-e", "GNUCASH_BOOK_PATH=\(ContainerAPIClient.bookPath)",
-            ContainerAPIClient.imageName
+            ContainerAPIClient.imageName,
         ]
         let stdin = Pipe()
         let stdout = Pipe()

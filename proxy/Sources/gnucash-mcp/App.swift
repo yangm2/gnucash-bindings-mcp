@@ -129,13 +129,14 @@ extension GnuCashMCP {
 
             var config: [String: Any] = [:]
             if let data = FileManager.default.contents(atPath: configPath),
-               let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+               let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            {
                 config = existing
             }
             var mcpServers = config["mcpServers"] as? [String: Any] ?? [:]
             mcpServers["gnucash-myproject"] = [
                 "command": resolvedBinary,
-                "args": ["--stdio"]
+                "args": ["--stdio"],
             ]
             config["mcpServers"] = mcpServers
             let configData = try JSONSerialization.data(
@@ -155,7 +156,7 @@ extension GnuCashMCP {
                 "ProgramArguments": [resolvedBinary, "start"],
                 "RunAtLoad": false,
                 "StandardOutPath": "/tmp/gnucash-mcp.log",
-                "StandardErrorPath": "/tmp/gnucash-mcp.err"
+                "StandardErrorPath": "/tmp/gnucash-mcp.err",
             ]
             let plistData = try PropertyListSerialization.data(
                 fromPropertyList: plist, format: .xml, options: 0,

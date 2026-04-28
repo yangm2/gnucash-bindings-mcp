@@ -23,10 +23,10 @@ enum ToolCatalog {
         "receive_invoice", "pay_invoice", "fund_project", "post_interest",
         "post_transaction", "get_account_balance", "list_accounts",
         "list_transactions", "get_transaction", "get_project_summary",
-        "get_budget_vs_actual", "get_ap_aging", "get_audit_log"
+        "get_budget_vs_actual", "get_ap_aging", "get_audit_log",
     ]
     static let tier1Crud: Set<String> = [
-        "update_transaction", "void_transaction", "delete_transaction"
+        "update_transaction", "void_transaction", "delete_transaction",
     ]
     static let tier2: Set<String> = [
         "book_add_account", "book_get_account_tree", "book_verify_structure",
@@ -36,11 +36,11 @@ enum ToolCatalog {
         "vendor_update", "vendor_delete",
         "budget_create", "budget_list", "budget_get", "budget_set_amount",
         "budget_update", "budget_delete",
-        "eco_create", "eco_list", "eco_get", "eco_approve", "eco_void"
+        "eco_create", "eco_list", "eco_get", "eco_approve", "eco_void",
     ]
     static let readOnly: Set<String> = [
         "get_account_balance", "list_accounts", "list_transactions",
-        "get_transaction", "get_project_summary", "get_audit_log"
+        "get_transaction", "get_project_summary", "get_audit_log",
     ]
     static let setup: Set<String> = [
         "book_add_account", "book_get_account_tree", "book_verify_structure",
@@ -50,7 +50,7 @@ enum ToolCatalog {
         "vendor_update", "vendor_delete",
         "budget_create", "budget_list", "budget_get", "budget_set_amount",
         "budget_update", "budget_delete",
-        "eco_create", "eco_list", "eco_get"
+        "eco_create", "eco_list", "eco_get",
     ]
     static let construction: Set<String> =
         tier1
@@ -59,7 +59,7 @@ enum ToolCatalog {
     static let operational: Set<String> = tier1.union(tier1Crud)
     static let reconcile: Set<String> = [
         "list_transactions", "get_transaction", "get_account_balance",
-        "get_audit_log", "void_transaction", "update_transaction"
+        "get_audit_log", "void_transaction", "update_transaction",
     ]
 
     // ── tool definitions ──────────────────────────────────────────────────────
@@ -79,7 +79,7 @@ enum ToolCatalog {
                     "expense_account": .string(
                         description:
                         "Full path e.g. 'Expenses:Architecture — Acme Architecture'",
-                    )
+                    ),
                 ],
                 required: ["date", "vendor", "invoice_ref", "amount", "expense_account"],
             ),
@@ -93,7 +93,7 @@ enum ToolCatalog {
                     "date": .string(description: "YYYY-MM-DD"),
                     "vendor": .string(description: "Exact vendor name"),
                     "invoice_ref": .string(description: "Invoice reference being paid"),
-                    "amount": .string(description: "Decimal amount e.g. '25000.00'")
+                    "amount": .string(description: "Decimal amount e.g. '25000.00'"),
                 ],
                 required: ["date", "vendor", "invoice_ref", "amount"],
             ),
@@ -106,7 +106,7 @@ enum ToolCatalog {
                 [
                     "date": .string(description: "YYYY-MM-DD"),
                     "amount": .string(description: "Decimal amount e.g. '50000.00'"),
-                    "memo": .string(description: "Optional memo e.g. 'Initial funding'")
+                    "memo": .string(description: "Optional memo e.g. 'Initial funding'"),
                 ],
                 required: ["date", "amount"],
             ),
@@ -118,7 +118,7 @@ enum ToolCatalog {
             inputSchema: .object(
                 [
                     "month": .string(description: "YYYY-MM or YYYY-MM-DD"),
-                    "amount": .string(description: "Decimal amount e.g. '42.17'")
+                    "amount": .string(description: "Decimal amount e.g. '42.17'"),
                 ],
                 required: ["month", "amount"],
             ),
@@ -141,12 +141,12 @@ enum ToolCatalog {
                                 "amount": .string(
                                     description: "Decimal; positive=DR, negative=CR",
                                 ),
-                                "memo": .string(description: "Optional split memo")
+                                "memo": .string(description: "Optional split memo"),
                             ],
                             required: ["account_path", "amount"],
                         ),
                         description: "Array of split objects; amounts must sum to zero",
-                    )
+                    ),
                 ],
                 required: ["date", "description", "splits"],
             ),
@@ -179,7 +179,7 @@ enum ToolCatalog {
             inputSchema: .object(
                 [
                     "account_path": .string(description: "Full account path"),
-                    "limit": .integer(description: "Max results, default 20")
+                    "limit": .integer(description: "Max results, default 20"),
                 ],
                 required: ["account_path"],
             ),
@@ -210,7 +210,7 @@ enum ToolCatalog {
                     "include_ecos": .bool(
                         description:
                         "If true (default), split out original_contract vs approved ECO adjustments",
-                    )
+                    ),
                 ],
                 required: [],
             ),
@@ -232,7 +232,7 @@ enum ToolCatalog {
                     "tool_filter": .string(description: "If set, only entries from this tool"),
                     "since_date": .string(
                         description: "If set (YYYY-MM-DD), only entries logged after this date",
-                    )
+                    ),
                 ],
                 required: [],
             ),
@@ -249,7 +249,7 @@ enum ToolCatalog {
                     "transaction_guid": .string(description: "From get_transaction or list_transactions"),
                     "date": .string(description: "New date YYYY-MM-DD (optional)"),
                     "description": .string(description: "New description (optional)"),
-                    "notes": .string(description: "New notes (optional)")
+                    "notes": .string(description: "New notes (optional)"),
                 ],
                 required: ["transaction_guid"],
             ),
@@ -262,7 +262,7 @@ enum ToolCatalog {
             inputSchema: .object(
                 [
                     "transaction_guid": .string(description: "From list_transactions or get_transaction"),
-                    "reason": .string(description: "Reason for void e.g. 'Wrong amount, see TXN-xyz'")
+                    "reason": .string(description: "Reason for void e.g. 'Wrong amount, see TXN-xyz'"),
                 ],
                 required: ["transaction_guid", "reason"],
             ),
@@ -275,7 +275,7 @@ enum ToolCatalog {
             inputSchema: .object(
                 [
                     "transaction_guid": .string(description: "GUID of transaction to delete"),
-                    "confirm": .bool(description: "Must be true to proceed")
+                    "confirm": .bool(description: "Must be true to proceed"),
                 ],
                 required: ["transaction_guid", "confirm"],
             ),
@@ -295,10 +295,10 @@ enum ToolCatalog {
                     "account_type": .enum(
                         [
                             "ASSET", "BANK", "CASH", "CREDIT", "EQUITY",
-                            "EXPENSE", "INCOME", "LIABILITY", "PAYABLE", "RECEIVABLE"
+                            "EXPENSE", "INCOME", "LIABILITY", "PAYABLE", "RECEIVABLE",
                         ],
                     ),
-                    "commodity": .string(description: "Currency code, default 'USD'")
+                    "commodity": .string(description: "Currency code, default 'USD'"),
                 ],
                 required: ["name", "parent_path", "account_type"],
             ),
@@ -328,7 +328,7 @@ enum ToolCatalog {
                 [
                     "account_path": .string(description: "Account to set opening balance for"),
                     "amount": .string(description: "Opening balance amount"),
-                    "date": .string(description: "YYYY-MM-DD")
+                    "date": .string(description: "YYYY-MM-DD"),
                 ],
                 required: ["account_path", "amount", "date"],
             ),
@@ -341,7 +341,7 @@ enum ToolCatalog {
             inputSchema: .object(
                 [
                     "account_path": .string(description: "Full current path"),
-                    "new_name": .string(description: "New leaf name")
+                    "new_name": .string(description: "New leaf name"),
                 ],
                 required: ["account_path", "new_name"],
             ),
@@ -354,7 +354,7 @@ enum ToolCatalog {
             inputSchema: .object(
                 [
                     "account_path": .string(description: "Full current path"),
-                    "new_parent_path": .string(description: "Full path of new parent")
+                    "new_parent_path": .string(description: "Full path of new parent"),
                 ],
                 required: ["account_path", "new_parent_path"],
             ),
@@ -369,7 +369,7 @@ enum ToolCatalog {
                     "account_path": .string(description: "Full account path to delete"),
                     "require_zero_balance": .bool(
                         description: "Default true; set false to override balance check",
-                    )
+                    ),
                 ],
                 required: ["account_path"],
             ),
@@ -391,7 +391,7 @@ enum ToolCatalog {
                     "expense_category": .enum(
                         ["Architecture", "Structural", "MEP", "HVAC"],
                         description: "For professional vendors",
-                    )
+                    ),
                 ],
                 required: ["name"],
             ),
@@ -420,7 +420,7 @@ enum ToolCatalog {
             inputSchema: .object(
                 [
                     "old_name": .string(description: "Current vendor name"),
-                    "new_name": .string(description: "New vendor name")
+                    "new_name": .string(description: "New vendor name"),
                 ],
                 required: ["old_name", "new_name"],
             ),
@@ -436,7 +436,7 @@ enum ToolCatalog {
                     "trade": .string(description: "New trade account path"),
                     "expense_category": .enum(
                         ["Architecture", "Structural", "MEP", "HVAC"],
-                    )
+                    ),
                 ],
                 required: ["name"],
             ),
@@ -449,7 +449,7 @@ enum ToolCatalog {
             inputSchema: .object(
                 [
                     "name": .string(description: "Vendor name"),
-                    "confirm": .bool(description: "Must be true to proceed")
+                    "confirm": .bool(description: "Must be true to proceed"),
                 ],
                 required: ["name", "confirm"],
             ),
@@ -464,7 +464,7 @@ enum ToolCatalog {
                 [
                     "name": .string(description: "Budget name e.g. 'Project Budget 2025'"),
                     "period_start": .string(description: "YYYY-MM-DD"),
-                    "num_periods": .integer(description: "Number of periods, default 1")
+                    "num_periods": .integer(description: "Number of periods, default 1"),
                 ],
                 required: ["name", "period_start"],
             ),
@@ -496,7 +496,7 @@ enum ToolCatalog {
                     "account_path": .string(
                         description: "Full account path e.g. 'Expenses:Construction:Electrical'",
                     ),
-                    "amount": .string(description: "Budget amount e.g. '150000.00'")
+                    "amount": .string(description: "Budget amount e.g. '150000.00'"),
                 ],
                 required: ["budget_name", "account_path", "amount"],
             ),
@@ -508,7 +508,7 @@ enum ToolCatalog {
             inputSchema: .object(
                 [
                     "budget_name": .string(description: "Current budget name"),
-                    "new_name": .string(description: "New budget name (optional)")
+                    "new_name": .string(description: "New budget name (optional)"),
                 ],
                 required: ["budget_name"],
             ),
@@ -520,7 +520,7 @@ enum ToolCatalog {
             inputSchema: .object(
                 [
                     "budget_name": .string(description: "Budget name to delete"),
-                    "confirm": .bool(description: "Must be true to proceed")
+                    "confirm": .bool(description: "Must be true to proceed"),
                 ],
                 required: ["budget_name", "confirm"],
             ),
@@ -545,7 +545,7 @@ enum ToolCatalog {
                         description:
                         "Affected Construction account e.g. 'Expenses:Construction:Framing'",
                     ),
-                    "notes": .string(description: "Optional notes")
+                    "notes": .string(description: "Optional notes"),
                 ],
                 required: ["number", "description", "direction", "amount", "budget_account"],
             ),
@@ -559,7 +559,7 @@ enum ToolCatalog {
                     "status": .enum(
                         ["pending", "approved", "void"],
                         description: "Filter by status (optional)",
-                    )
+                    ),
                 ],
                 required: [],
             ),
@@ -581,7 +581,7 @@ enum ToolCatalog {
             inputSchema: .object(
                 [
                     "number": .string(description: "ECO number to approve"),
-                    "date": .string(description: "Approval date YYYY-MM-DD")
+                    "date": .string(description: "Approval date YYYY-MM-DD"),
                 ],
                 required: ["number", "date"],
             ),
@@ -594,10 +594,10 @@ enum ToolCatalog {
             inputSchema: .object(
                 [
                     "number": .string(description: "ECO number to void"),
-                    "reason": .string(description: "Reason for voiding")
+                    "reason": .string(description: "Reason for voiding"),
                 ],
                 required: ["number", "reason"],
             ),
-        )
+        ),
     ]
 }

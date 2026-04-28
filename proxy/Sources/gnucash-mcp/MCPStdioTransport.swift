@@ -38,7 +38,8 @@ actor MCPStdioTransport {
 
                 guard let response else { continue } // notifications produce no response
                 if let out = try? encoder.encode(response),
-                   let str = String(data: out, encoding: .utf8) {
+                   let str = String(data: out, encoding: .utf8)
+                {
                     print(str)
                     fflush(stdout)
                 }
@@ -114,12 +115,12 @@ actor MCPStdioTransport {
             "protocolVersion": .string("2024-11-05"),
             "capabilities": .object([
                 "tools": .object([:]),
-                "resources": .object([:])
+                "resources": .object([:]),
             ]),
             "serverInfo": .object([
                 "name": .string("gnucash-mcp"),
-                "version": .string("0.1.0")
-            ])
+                "version": .string("0.1.0"),
+            ]),
         ])
     }
 
@@ -140,9 +141,9 @@ actor MCPStdioTransport {
                 .object([
                     "uri": .string(uri),
                     "mimeType": .string("text/markdown"),
-                    "text": .string(text)
-                ])
-            ])
+                    "text": .string(text),
+                ]),
+            ]),
         ])
     }
 }

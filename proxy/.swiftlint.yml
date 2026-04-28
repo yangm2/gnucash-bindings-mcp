@@ -1,5 +1,8 @@
-# disabled_rules:
-# - trailing_whitespace
+disabled_rules:
+- trailing_whitespace
+- trailing_comma
+- opening_brace
+- closing_brace
 
 opt_in_rules:
 - empty_count

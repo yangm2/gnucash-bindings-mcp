@@ -75,12 +75,12 @@ struct MCPTransportTests {
             "protocolVersion": .string("2024-11-05"),
             "capabilities": .object([
                 "tools": .object([:]),
-                "resources": .object([:])
+                "resources": .object([:]),
             ]),
             "serverInfo": .object([
                 "name": .string("gnucash-mcp"),
-                "version": .string("0.1.0")
-            ])
+                "version": .string("0.1.0"),
+            ]),
         ])
         let response = JSONRPCResponse.success(id: .int(1), result: result)
         let data = try encoder.encode(response)
