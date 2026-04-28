@@ -75,28 +75,14 @@ container run --rm \
     uv run --active pyright gnucash_mcp scripts tests"
 """
 
-[tasks.init-book]
-description = "Initialize GnuCash book in .test-data/"
-depends = []
-run = """
-container run --rm \
-  -v {{config_root}}/.test-data:/data:rw \
-  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
-  --entrypoint python3 \
-  gnucash-mcp:latest \
-  /src/scripts/init_book.py
-"""
-
 [tasks.test]
 description = "Run test suite in dev container"
 depends = []
 run = """
 container run --rm \
-  -v {{config_root}}/.test-data:/data:rw \
   -v ${WORKER_DIR}/gnucash_mcp:/src/gnucash_mcp:ro \
   -v ${WORKER_DIR}/scripts:/src/scripts:ro \
   -v ${WORKER_DIR}/tests:/src/tests:ro \
-  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
   --entrypoint bash \
   gnucash-mcp:dev \
   -c "cd /src && uv run --active --frozen pytest tests/ -v"
@@ -113,8 +99,23 @@ run = "swiftlint lint --fix {{config_root}}/proxy"
 
 # ── runtime ───────────────────────────────────────────────────────────────────
 
+[tasks.init-book]
+description = """Initialize GnuCash book in .test-data/
+  — required once before 'mise run' or 'mise shell'; not
+  needed for 'mise test' (fixtures create their own books)"""
+depends = []
+run = """
+container run --rm \
+  -v {{config_root}}/.test-data:/data:rw \
+  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
+  --entrypoint python3 \
+  gnucash-mcp:latest \
+  /src/scripts/init_book.py
+"""
+
 [tasks.run]
 description = "One-shot dispatch: pipe JSON-RPC on stdin → stdout"
+depends = ["init-book"]
 run = """
 container run --rm -i \
   -v {{config_root}}/.test-data:/data:rw \
@@ -124,6 +125,7 @@ container run --rm -i \
 
 [tasks.shell]
 description = "Interactive shell in prod container"
+depends = ["init-book"]
 run = """
 container run --rm -it \
   -v {{config_root}}/.test-data:/data:rw \
@@ -134,7 +136,7 @@ container run --rm -it \
 
 [tasks.shell-dev]
 description = "Interactive shell in dev container with source mounted rw"
-depends = ["build-dev"]
+depends = ["build-dev", "init-book"]
 run = """
 container run --rm -it \
   -v {{config_root}}/.test-data:/data:rw \
@@ -152,5 +154,3 @@ run = "rm -f {{config_root}}/.test-data/*.gnucash* {{config_root}}/.test-data/*.
 [tasks.cleaner]
 description = "Clean all build artifacts and test data (images, volumes, etc.)"
 depends = ["delete-build-images", "clean"]
-
-
