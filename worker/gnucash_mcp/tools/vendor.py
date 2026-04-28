@@ -19,6 +19,7 @@ from gnucash_mcp.session import (
     get_account,
     get_txn_isodate,
     get_usd,
+    new_account,
 )
 
 
@@ -65,23 +66,20 @@ def _parse_desc(ap_acc) -> tuple[str, str]:
 
 
 def _create_ap_account(book, ap_name: str, liabilities, usd, description: str) -> None:
-    ap = Account(book)
-    ap.SetName(ap_name)
-    ap.SetType(gc.ACCT_TYPE_PAYABLE)
-    ap.SetCommodity(usd)
-    ap.SetDescription(description)
-    liabilities.append_child(ap)
+    with new_account(book, liabilities) as ap:
+        ap.SetName(ap_name)
+        ap.SetType(gc.ACCT_TYPE_PAYABLE)
+        ap.SetCommodity(usd)
+        ap.SetDescription(description)
 
 
 def _ensure_expense_account(book, expense_name: str, expenses) -> None:
     existing = {acc.name for acc in expenses.get_children()}
     if expense_name not in existing:
-        usd = get_usd(book)
-        exp_acc = Account(book)
-        exp_acc.SetName(expense_name)
-        exp_acc.SetType(gc.ACCT_TYPE_EXPENSE)
-        exp_acc.SetCommodity(usd)
-        expenses.append_child(exp_acc)
+        with new_account(book, expenses) as exp_acc:
+            exp_acc.SetName(expense_name)
+            exp_acc.SetType(gc.ACCT_TYPE_EXPENSE)
+            exp_acc.SetCommodity(get_usd(book))
 
 
 # ── public tools ──────────────────────────────────────────────────────────────

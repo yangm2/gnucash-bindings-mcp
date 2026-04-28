@@ -5,9 +5,8 @@ import pytest
 from pathlib import Path
 from shutil import rmtree
 
-from gnucash_mcp.session import book_session
+from gnucash_mcp.session import book_session, new_account, get_usd
 from gnucash_mcp import wal
-from gnucash import Account
 import gnucash.gnucash_core_c as gc
 
 
@@ -47,37 +46,36 @@ def initialized_book(test_book_path, test_wal_path):
         root = book.get_root_account()
 
         # Minimal MC-6 chart for testing
-        usd = book.get_table().lookup("CURRENCY", "USD")
+        usd = get_usd(book)
 
-        def create_account(parent, name, acct_type):
-            acc = Account(book)
-            acc.SetName(name)
-            acc.SetType(acct_type)
-            acc.SetCommodity(usd)
-            parent.append_child(acc)
+        def mk(parent, name, acct_type):
+            with new_account(book, parent) as acc:
+                acc.SetName(name)
+                acc.SetType(acct_type)
+                acc.SetCommodity(usd)
             return acc
 
         # Create main accounts
-        assets = create_account(root, "Assets", gc.ACCT_TYPE_ASSET)
-        create_account(assets, "Project Checking", gc.ACCT_TYPE_BANK)
+        assets = mk(root, "Assets", gc.ACCT_TYPE_ASSET)
+        mk(assets, "Project Checking", gc.ACCT_TYPE_BANK)
 
-        liabilities = create_account(root, "Liabilities", gc.ACCT_TYPE_LIABILITY)
-        create_account(liabilities, "AP — Acme Architecture", gc.ACCT_TYPE_PAYABLE)
-        create_account(liabilities, "AP — Peak Structural", gc.ACCT_TYPE_PAYABLE)
-        create_account(liabilities, "AP — Meridian MEP", gc.ACCT_TYPE_PAYABLE)
-        create_account(liabilities, "AP — Summit HVAC", gc.ACCT_TYPE_PAYABLE)
+        liabilities = mk(root, "Liabilities", gc.ACCT_TYPE_LIABILITY)
+        mk(liabilities, "AP — Acme Architecture", gc.ACCT_TYPE_PAYABLE)
+        mk(liabilities, "AP — Peak Structural", gc.ACCT_TYPE_PAYABLE)
+        mk(liabilities, "AP — Meridian MEP", gc.ACCT_TYPE_PAYABLE)
+        mk(liabilities, "AP — Summit HVAC", gc.ACCT_TYPE_PAYABLE)
 
-        equity = create_account(root, "Equity", gc.ACCT_TYPE_EQUITY)
-        create_account(equity, "Owner Capital", gc.ACCT_TYPE_EQUITY)
+        equity = mk(root, "Equity", gc.ACCT_TYPE_EQUITY)
+        mk(equity, "Owner Capital", gc.ACCT_TYPE_EQUITY)
 
-        income = create_account(root, "Income", gc.ACCT_TYPE_INCOME)
-        create_account(income, "Interest Income", gc.ACCT_TYPE_INCOME)
+        income = mk(root, "Income", gc.ACCT_TYPE_INCOME)
+        mk(income, "Interest Income", gc.ACCT_TYPE_INCOME)
 
-        expenses = create_account(root, "Expenses", gc.ACCT_TYPE_EXPENSE)
-        create_account(expenses, "Architecture — Acme Architecture", gc.ACCT_TYPE_EXPENSE)
-        create_account(expenses, "Structural Engineering — Peak Structural", gc.ACCT_TYPE_EXPENSE)
-        create_account(expenses, "MEP Consulting — Meridian MEP", gc.ACCT_TYPE_EXPENSE)
-        create_account(expenses, "HVAC Engineering — Summit HVAC", gc.ACCT_TYPE_EXPENSE)
+        expenses = mk(root, "Expenses", gc.ACCT_TYPE_EXPENSE)
+        mk(expenses, "Architecture — Acme Architecture", gc.ACCT_TYPE_EXPENSE)
+        mk(expenses, "Structural Engineering — Peak Structural", gc.ACCT_TYPE_EXPENSE)
+        mk(expenses, "MEP Consulting — Meridian MEP", gc.ACCT_TYPE_EXPENSE)
+        mk(expenses, "HVAC Engineering — Summit HVAC", gc.ACCT_TYPE_EXPENSE)
 
     yield test_book_path
 

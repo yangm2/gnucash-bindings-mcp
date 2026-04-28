@@ -20,6 +20,7 @@ from gnucash_mcp.session import (
     get_account,
     get_usd,
     gnc_decimal,
+    new_account,
     new_transaction,
     set_txn_isodate,
     get_txn_isodate,
@@ -212,7 +213,7 @@ def test_txn_isodate_roundtrip_property(d):
 
     Self-contained (no pytest fixtures) so Hypothesis controls the full test lifecycle.
     """
-    from gnucash import Split, Account
+    from gnucash import Split
     import gnucash.gnucash_core_c as gc
 
     date_str = d.isoformat()
@@ -223,16 +224,14 @@ def test_txn_isodate_roundtrip_property(d):
             root = book.get_root_account()
             usd = get_usd(book)
 
-            def make_acc(parent, name, acct_type):
-                acc = Account(book)
-                acc.SetName(name)
-                acc.SetType(acct_type)
-                acc.SetCommodity(usd)
-                parent.append_child(acc)
-                return acc
-
-            checking = make_acc(root, "Assets", gc.ACCT_TYPE_ASSET)
-            equity = make_acc(root, "Equity", gc.ACCT_TYPE_EQUITY)
+            with new_account(book, root) as checking:
+                checking.SetName("Assets")
+                checking.SetType(gc.ACCT_TYPE_ASSET)
+                checking.SetCommodity(usd)
+            with new_account(book, root) as equity:
+                equity.SetName("Equity")
+                equity.SetType(gc.ACCT_TYPE_EQUITY)
+                equity.SetCommodity(usd)
 
             with new_transaction(book) as txn:
                 set_txn_isodate(txn, date_str)

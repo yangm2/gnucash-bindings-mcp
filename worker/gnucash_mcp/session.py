@@ -6,6 +6,7 @@ Public API:
   book_session(path, is_new=False) -> contextmanager[Session]
   new_transaction(book) -> contextmanager[Transaction]
   edit_transaction(txn) -> contextmanager[Transaction]
+  new_account(book, parent) -> contextmanager[Account]
   clear_stale_lock(path) -> None
   get_account(book, full_name) -> Account          raises AccountNotFoundError
   gnc_decimal(amount_str) -> GncNumeric
@@ -139,6 +140,18 @@ def edit_transaction(txn: Transaction):
         raise
     else:
         txn.CommitEdit()
+
+
+@contextmanager
+def new_account(book: Book, parent: Account):
+    """Context manager: create Account → yield for configuration → append_child on clean exit."""
+    acc = Account(book)
+    try:
+        yield acc
+    except Exception:
+        raise
+    else:
+        parent.append_child(acc)
 
 
 def get_account(book: Book, full_name: str):

@@ -12,6 +12,7 @@ from gnucash_mcp.session import (
     AccountNotFoundError,
     book_path,
     book_session,
+    new_account,
     new_transaction,
     get_account,
     get_usd,
@@ -48,11 +49,10 @@ def _ensure_opening_balances(book) -> Account:
         return get_account(book, _OPENING_BALANCES_PATH)
     except AccountNotFoundError:
         equity = get_account(book, "Equity")
-        acc = Account(book)
-        acc.SetName("Opening Balances")
-        acc.SetType(gc.ACCT_TYPE_EQUITY)
-        acc.SetCommodity(get_usd(book))
-        equity.append_child(acc)
+        with new_account(book, equity) as acc:
+            acc.SetName("Opening Balances")
+            acc.SetType(gc.ACCT_TYPE_EQUITY)
+            acc.SetCommodity(get_usd(book))
         return acc
 
 
@@ -78,11 +78,10 @@ def book_add_account(
         existing = {acc.name for acc in parent.get_children()}
         if name not in existing:
             usd = book.get_table().lookup("CURRENCY", commodity)
-            acc = Account(book)
-            acc.SetName(name)
-            acc.SetType(ACCOUNT_TYPES[account_type])
-            acc.SetCommodity(usd)
-            parent.append_child(acc)
+            with new_account(book, parent) as acc:
+                acc.SetName(name)
+                acc.SetType(ACCOUNT_TYPES[account_type])
+                acc.SetCommodity(usd)
 
     return {"status": "ok", "path": f"{parent_path}:{name}"}
 
