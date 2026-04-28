@@ -80,9 +80,28 @@ def get_transaction(
 }
 ```
 
-MCP slots (`mcp-wal-id`, `mcp-tool`) are read via `txn.GetSlot()` and surfaced
-under the `"mcp"` key. Transactions posted outside the MCP (e.g. via direct
-GnuCash GUI entry) will have `"mcp": null`.
+MCP provenance (`mcp-wal-id`, `mcp-tool`) is stored in the transaction's `notes`
+field as `mcp-wal-id:{id}|mcp-tool:{tool}` and parsed back on read. Transactions
+posted outside the MCP (e.g. via direct GnuCash GUI entry) will have `"mcp": null`.
+
+**GnuCash Python binding notes (discovered during implementation):**
+
+`Transaction.SetSlot()` / `GetSlot()` do not exist in GnuCash 5.14's Python
+bindings — the `gnucash_core_c` module exposes no accessible KVP frame API on
+Transaction objects. The notes field is used for MCP provenance instead. When
+`update_transaction(notes=...)` is called by the user, the provenance is overwritten
+by the user's value; the WAL still provides the bidirectional link.
+
+`void_transaction` uses `txn.Void(reason)` directly — this method handles
+`BeginEdit`/`CommitEdit` internally and must NOT be called within an
+`edit_transaction` context manager. Status is checked via `txn.GetVoidStatus()`
+and reason retrieved via `txn.GetVoidReason()`. The `gc.xaccTransVoid` /
+`gc.xaccTransGetVoidStatus` C-level functions require `txn.instance` (the raw
+SWIG pointer), not the Python wrapper object — prefer the Python methods.
+
+Split account paths: `split.GetAccount().name` returns only the leaf name. Use
+`_account_full_path(acc)` (walk `get_parent()` until root) to get the full
+colon-separated path as expected by `get_account()`.
 
 **Design notes:**
 
@@ -118,8 +137,8 @@ T3.1.10 get_transaction on voided transaction shows void status and reason
 T3.1.11 After void_transaction + new correcting entry: net balance matches expected
         (end-to-end: receive wrong invoice amount → void → re-receive correct amount)
 T3.1.12 get_transaction on an MCP-posted transaction returns mcp.wal_id matching the
-        WAL entry id and mcp.tool matching the tool name
-T3.1.13 get_transaction on a GUI-posted transaction (no slots) returns mcp: null
+        WAL entry id and mcp.tool matching the tool name (provenance from notes field)
+T3.1.13 get_transaction on a GUI-posted transaction (no mcp notes prefix) returns mcp: null
 T3.1.14 WAL entry transaction_guid matches the guid field in get_transaction output
         (bidirectional link verified: WAL→GnuCash and GnuCash→WAL)
 ```

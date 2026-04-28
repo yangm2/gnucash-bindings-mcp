@@ -43,23 +43,69 @@ def _acc_to_dict(acc) -> dict:
     }
 
 
+def _account_full_path(acc) -> str:
+    """Return the colon-separated full path for an account, e.g. 'Expenses:Architecture — Acme'."""
+    parts = []
+    current = acc
+    while current is not None:
+        parent = current.get_parent()
+        if parent is None:
+            break  # current is the hidden root
+        parts.append(current.name)
+        current = parent
+    parts.reverse()
+    return ":".join(parts)
+
+
 def _split_to_dict(split) -> dict:
     return {
-        "account": split.GetAccount().name,
+        "account": _account_full_path(split.GetAccount()),
         "amount": _balance_str(split.GetAmount()),
         "memo": split.GetMemo(),
+        "reconcile_state": split.GetReconcile(),
     }
 
 
+_MCP_PREFIX = "mcp-wal-id:"
+
+
+def _mcp_slots(txn) -> dict | None:
+    """Parse MCP provenance stored in the notes field as 'mcp-wal-id:{id}|mcp-tool:{tool}'."""
+    notes = txn.GetNotes() or ""
+    if not notes.startswith(_MCP_PREFIX):
+        return None
+    try:
+        parts: dict[str, str] = {}
+        for item in notes.split("|"):
+            if ":" in item:
+                k, v = item.split(":", 1)
+                parts[k] = v
+        wal_id = parts.get("mcp-wal-id")
+        tool = parts.get("mcp-tool")
+        if wal_id or tool:
+            return {"wal_id": wal_id, "tool": tool}
+    except Exception:
+        pass
+    return None
+
+
+def _user_notes(txn) -> str:
+    """Return user-visible notes, stripping any MCP provenance prefix."""
+    raw = txn.GetNotes() or ""
+    return "" if raw.startswith(_MCP_PREFIX) else raw
+
+
 def _txn_to_dict(txn) -> dict:
-    splits = [_split_to_dict(s) for s in txn.GetSplitList()]
+    is_void = bool(txn.GetVoidStatus())
     return {
         "guid": txn.GetGUID().to_string(),
         "date": get_txn_isodate(txn) if txn.GetDate() else None,
         "description": txn.GetDescription(),
-        "splits": splits,
-        "mcp_wal_id": txn.GetSlot("mcp-wal-id") if (has_slot := hasattr(txn, "GetSlot")) else None,
-        "mcp_tool": txn.GetSlot("mcp-tool") if has_slot else None,
+        "notes": _user_notes(txn),
+        "is_void": is_void,
+        "void_reason": txn.GetVoidReason() if is_void else None,
+        "splits": [_split_to_dict(s) for s in txn.GetSplitList()],
+        "mcp": _mcp_slots(txn),
     }
 
 
@@ -173,11 +219,27 @@ def get_project_summary() -> dict:
         }
 
 
-def get_audit_log() -> list:
-    """Return all WAL entries (newest first)."""
+def get_audit_log(
+    limit: int = 20,
+    tool_filter: str | None = None,
+    since_date: str | None = None,
+) -> list:
+    """Return recent WAL entries, newest first.
+
+    limit: max entries to return
+    tool_filter: if set, only entries with matching type field
+    since_date: if set (YYYY-MM-DD), only entries logged after that date
+    """
     entries = wal.all_entries()
     entries.reverse()
-    return entries
+
+    if tool_filter is not None:
+        entries = [e for e in entries if e["type"] == tool_filter]
+
+    if since_date is not None:
+        entries = [e for e in entries if e["logged_at"][:10] > since_date]
+
+    return entries[:limit]
 
 
 def unlock_ledger() -> dict:

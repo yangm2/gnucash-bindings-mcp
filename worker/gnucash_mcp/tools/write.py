@@ -17,6 +17,7 @@ from gnucash import Split
 from gnucash_mcp.session import (
     book_path,
     book_session,
+    edit_transaction,
     new_transaction,
     get_account,
     get_usd,
@@ -55,12 +56,7 @@ def _post_transaction(
                 split.SetMemo(spec["memo"])
 
         if wal_entry is not None and tool_name is not None:
-            try:
-                txn.SetSlot("mcp-wal-id", wal_entry["id"])
-                txn.SetSlot("mcp-tool", tool_name)
-                txn.SetSlot("mcp-version", "1")
-            except Exception:
-                pass  # Slots are best-effort; never fail the transaction
+            txn.SetNotes(f"mcp-wal-id:{wal_entry['id']}|mcp-tool:{tool_name}")
 
     return txn, txn.GetGUID().to_string()
 
@@ -175,6 +171,114 @@ def pay_invoice(date: str, vendor: str, invoice_ref: str, amount: str) -> dict:
 
     wal.mark_committed(entry["id"], transaction_guid=guid)
     return {"status": "ok", "transaction_guid": guid, "wal_id": entry["id"]}
+
+
+class RequiresConfirmationError(Exception):
+    pass
+
+
+def _find_txn_by_guid(book, guid_str: str):
+    def _walk(acc):
+        for split in acc.GetSplitList():
+            txn = split.GetParent()
+            if txn.GetGUID().to_string() == guid_str:
+                return txn
+        for child in acc.get_children():
+            result = _walk(child)
+            if result is not None:
+                return result
+        return None
+
+    return _walk(book.get_root_account())
+
+
+def update_transaction(
+    transaction_guid: str,
+    date: str | None = None,
+    description: str | None = None,
+    notes: str | None = None,
+) -> dict:
+    """Update metadata on an existing transaction (date, description, notes).
+
+    Does not change splits or amounts.
+    """
+    entry = wal.append(
+        "update_transaction",
+        {
+            "transaction_guid": transaction_guid,
+            "date": date,
+            "description": description,
+            "notes": notes,
+        },
+    )
+
+    with book_session(book_path()) as session:
+        txn = _find_txn_by_guid(session.book, transaction_guid)
+        if txn is None:
+            raise ValueError(f"Transaction {transaction_guid!r} not found")
+
+        with edit_transaction(txn):
+            if date is not None:
+                set_txn_isodate(txn, date)
+            if description is not None:
+                txn.SetDescription(description)
+            if notes is not None:
+                txn.SetNotes(notes)
+
+    wal.mark_committed(entry["id"])
+    return {"status": "ok", "transaction_guid": transaction_guid}
+
+
+def void_transaction(transaction_guid: str, reason: str) -> dict:
+    """Mark a transaction as void, zeroing its balance effect while preserving the audit trail."""
+    entry = wal.append(
+        "void_transaction",
+        {"transaction_guid": transaction_guid, "reason": reason},
+    )
+
+    with book_session(book_path()) as session:
+        txn = _find_txn_by_guid(session.book, transaction_guid)
+        if txn is None:
+            raise ValueError(f"Transaction {transaction_guid!r} not found")
+
+        if txn.GetVoidStatus():
+            raise ValueError(
+                f"Transaction {transaction_guid!r} is already void. "
+                "Cannot void a transaction twice."
+            )
+
+        txn.Void(reason)
+
+    wal.mark_committed(entry["id"])
+    return {"status": "ok", "transaction_guid": transaction_guid}
+
+
+def delete_transaction(transaction_guid: str, confirm: bool = False) -> dict:
+    """Permanently delete a transaction. Requires confirm=True.
+
+    Prefer void_transaction for accounting corrections; use delete only for
+    duplicate or test transactions with no accounting significance.
+    """
+    if not confirm:
+        raise RequiresConfirmationError(
+            f"Pass confirm=True to delete transaction {transaction_guid!r}. "
+            "Use void_transaction instead for audit trail preservation."
+        )
+
+    entry = wal.append(
+        "delete_transaction",
+        {"transaction_guid": transaction_guid},
+    )
+
+    with book_session(book_path()) as session:
+        txn = _find_txn_by_guid(session.book, transaction_guid)
+        if txn is None:
+            raise ValueError(f"Transaction {transaction_guid!r} not found")
+
+        txn.Destroy()
+
+    wal.mark_committed(entry["id"])
+    return {"status": "ok", "deleted_guid": transaction_guid}
 
 
 def post_interest(month: str, amount: str) -> dict:
