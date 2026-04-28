@@ -202,6 +202,28 @@ T3.2.7  Empty WAL returns empty list (not error)
 
 ---
 
+### Implementation notes
+
+**`xaccTransDestroy` silently no-ops on voided transactions.**
+Calling `delete_transaction` on an already-voided transaction returns `{"status": "ok"}` but does not remove the record — GnuCash protects voided transactions from deletion to preserve the audit trail. The balance invariant still holds (void already zeroed the splits), but `get_transaction` continues to return the record with `is_void: True`. A future hardening pass should make `delete_transaction` raise `ValueError` when `txn.GetVoidStatus()` is True, rather than silently succeeding.
+
+**Property tests need per-example isolation and a broader backup purge.**
+Hypothesis calls the test body many times per second. The standard
+`_purge_same_second_backup()` in `session.py` deletes the backup matching the
+current wall-clock second, but rapid same-second saves still collide when
+multiple `book_session` calls open within the same second. Property tests patch
+`_purge_same_second_backup` with `_purge_all_backups` (globs
+`{path}.*.gnucash`) inside each `_fresh_book()` context manager. This is safe
+in a temp directory where there are no legitimate backups to preserve.
+
+**`fund_project` is not needed for invoice-only property tests.**
+`receive_invoice` only touches `Expenses:*` and `Liabilities:AP — *` accounts.
+Including `fund_project` unnecessarily adds an extra book save in the same
+second, increasing backup collision risk. Only include it when a test exercises
+payment flows (`pay_invoice`).
+
+---
+
 ### Phase 3 exit criteria
 
 - Correction workflow validated end-to-end: post wrong invoice → void → post

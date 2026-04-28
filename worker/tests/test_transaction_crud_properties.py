@@ -5,11 +5,13 @@ Each Hypothesis example needs a fresh GnuCash book — shared book state
 We create and tear down a book inline per example.
 """
 
+import glob
 import os
 import tempfile
 from contextlib import contextmanager
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from hypothesis import given, settings
@@ -48,6 +50,20 @@ descriptions = st.text(
 )
 
 
+def _purge_all_backups(path) -> None:
+    """Delete every GnuCash backup file for *path*, regardless of timestamp.
+
+    Replaces _purge_same_second_backup in tests: the standard implementation
+    only purges the current-second backup, so rapid same-second saves still
+    collide. In a temp directory there are no legitimate backups to preserve.
+    """
+    for f in glob.glob(f"{path}.*.gnucash"):
+        try:
+            Path(f).unlink()
+        except OSError:
+            pass
+
+
 @contextmanager
 def _fresh_book():
     """Inline book setup/teardown for one Hypothesis example."""
@@ -59,28 +75,29 @@ def _fresh_book():
         os.environ["GNUCASH_WAL_PATH"] = str(wal_path)
         wal.init(wal_path)
 
-        with book_session(book_path, is_new=True) as session:
-            book = session.book
-            root = book.get_root_account()
-            usd = get_usd(book)
+        with patch("gnucash_mcp.session._purge_same_second_backup", _purge_all_backups):
+            with book_session(book_path, is_new=True) as session:
+                book = session.book
+                root = book.get_root_account()
+                usd = get_usd(book)
 
-            def mk(parent, name, acct_type):
-                with new_account(book, parent) as acc:
-                    acc.SetName(name)
-                    acc.SetType(acct_type)
-                    acc.SetCommodity(usd)
-                return acc
+                def mk(parent, name, acct_type):
+                    with new_account(book, parent) as acc:
+                        acc.SetName(name)
+                        acc.SetType(acct_type)
+                        acc.SetCommodity(usd)
+                    return acc
 
-            assets = mk(root, "Assets", gc.ACCT_TYPE_ASSET)
-            mk(assets, "Project Checking", gc.ACCT_TYPE_BANK)
-            liabilities = mk(root, "Liabilities", gc.ACCT_TYPE_LIABILITY)
-            mk(liabilities, "AP — Acme Architecture", gc.ACCT_TYPE_PAYABLE)
-            equity = mk(root, "Equity", gc.ACCT_TYPE_EQUITY)
-            mk(equity, "Owner Capital", gc.ACCT_TYPE_EQUITY)
-            expenses = mk(root, "Expenses", gc.ACCT_TYPE_EXPENSE)
-            mk(expenses, "Architecture — Acme Architecture", gc.ACCT_TYPE_EXPENSE)
+                assets = mk(root, "Assets", gc.ACCT_TYPE_ASSET)
+                mk(assets, "Project Checking", gc.ACCT_TYPE_BANK)
+                liabilities = mk(root, "Liabilities", gc.ACCT_TYPE_LIABILITY)
+                mk(liabilities, "AP — Acme Architecture", gc.ACCT_TYPE_PAYABLE)
+                equity = mk(root, "Equity", gc.ACCT_TYPE_EQUITY)
+                mk(equity, "Owner Capital", gc.ACCT_TYPE_EQUITY)
+                expenses = mk(root, "Expenses", gc.ACCT_TYPE_EXPENSE)
+                mk(expenses, "Architecture — Acme Architecture", gc.ACCT_TYPE_EXPENSE)
 
-        yield
+            yield
 
     finally:
         wal._wal_path = None
@@ -241,3 +258,83 @@ def test_void_is_terminal(amount):
 
         with pytest.raises(ValueError):
             void_transaction(guid, reason="Second void attempt")
+
+
+# ── Split zero-sum invariant ──────────────────────────────────────────────────
+
+
+@settings(max_examples=50)
+@given(amount=amounts)
+def test_splits_sum_to_zero(amount):
+    """For any amount: every split in a posted transaction sums to exactly zero."""
+    with _fresh_book():
+        guid = receive_invoice(TEST_DATE, "Acme Architecture", "INV-001", amount, EXPENSE_ACCT)[
+            "transaction_guid"
+        ]
+
+        txn = get_transaction(guid)
+        total = sum(Decimal(s["amount"]) for s in txn["splits"])
+        assert total == Decimal("0")
+
+
+# ── Partial void: remaining balance matches non-voided subset ─────────────────
+
+
+@settings(max_examples=30)
+@given(
+    amounts_list=st.lists(amounts, min_size=2, max_size=6),
+    void_mask=st.lists(st.booleans(), min_size=2, max_size=6),
+)
+def test_partial_void_balance_matches_non_voided_sum(amounts_list, void_mask):
+    """Post N invoices, void a random subset; balance == sum of the non-voided ones."""
+    # Align mask length to amounts list length
+    mask = (void_mask + [False] * len(amounts_list))[: len(amounts_list)]
+
+    with _fresh_book():
+        guids = []
+        for i, amount in enumerate(amounts_list):
+            result = receive_invoice(
+                TEST_DATE, "Acme Architecture", f"INV-{i:03d}", amount, EXPENSE_ACCT
+            )
+            guids.append((result["transaction_guid"], amount))
+
+        expected = Decimal("0")
+        for (guid, amount), should_void in zip(guids, mask):
+            if should_void:
+                void_transaction(guid, reason="Partial void test")
+            else:
+                expected += Decimal(amount)
+
+        actual = Decimal(get_account_balance(EXPENSE_ACCT)["balance"])
+        assert actual == expected
+
+
+# ── void-then-delete removes the record ──────────────────────────────────────
+
+
+@settings(max_examples=40)
+@given(amount=amounts)
+def test_void_then_delete_balance_is_zero(amount):
+    """For any amount: void followed by delete leaves balance at zero.
+
+    GnuCash's xaccTransDestroy silently no-ops on voided transactions —
+    the record persists (is_void=True) as an immutable audit trail entry.
+    delete_transaction returns ok but does not remove the record; the
+    accounting invariant (zero balance) still holds because void already
+    zeroed the splits.
+    """
+    with _fresh_book():
+        guid = receive_invoice(TEST_DATE, "Acme Architecture", "INV-001", amount, EXPENSE_ACCT)[
+            "transaction_guid"
+        ]
+
+        void_transaction(guid, reason="Voiding before delete")
+        delete_transaction(guid, confirm=True)
+
+        result = get_transaction(guid)
+        # Record survives — GnuCash protects voided transactions from Destroy()
+        assert "error" not in result
+        assert result["is_void"] is True
+        # Balance invariant: zero regardless of what delete does
+        assert Decimal(get_account_balance(EXPENSE_ACCT)["balance"]) == Decimal("0")
+        assert Decimal(get_account_balance(AP_ACCT)["balance"]) == Decimal("0")
