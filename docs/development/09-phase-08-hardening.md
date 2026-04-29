@@ -136,6 +136,91 @@ T8.4.9  Mac sleep → wake → tool call succeeds (KU-11 sleep/wake recovery con
 
 ---
 
+### M8.6 — Agent hallucination guards
+
+**Goal:** Reduce the risk of an LLM agent posting fabricated, duplicated, or
+misclassified entries. The macOS GUI is read-only and human review is
+out-of-band, so guards must live at the dispatcher / WAL layer where they are
+unbypassable from prompt context.
+
+**Deliverables:**
+
+*Idempotency keys (highest priority).* Every write tool computes a stable
+content hash over its semantically-identifying fields and stores it in the WAL:
+- `book_invoice`: hash(vendor, invoice_number, amount, invoice_date)
+- `record_eco`: hash(eco_number, line_item, amount)
+- `record_payment`: hash(vendor, amount, payment_date, source_ref)
+- On WAL append, reject with JSON-RPC error if the hash already has a
+  `committed_at` entry. Replay-safe: WAL replay re-checks before re-posting.
+
+*Vendor-name canonicalization.* `book_invoice` will not implicitly create a new
+`Liabilities:AP — {vendor}` account. If the vendor string does not exact-match
+an existing AP account, the tool returns an error listing the closest fuzzy
+matches (Levenshtein ≤ 3 or shared token prefix) and requires the agent to
+either pick one or call an explicit `create_vendor` tool. Prevents silent
+duplicate AP accounts ("ABC Electric" vs "ABC Electrical LLC").
+
+*Per-tool account allowlists.* Schema-level (not prompt-level) restriction on
+which account paths each tool may touch:
+- `book_invoice`: credit must match `Liabilities:AP — *`; debit must match
+  `Expenses:Construction:*` or `Expenses:*` leaves (not parents).
+- `record_eco`: debit must match `Expenses:Change Orders:*`.
+- `record_payment`: debit must match `Liabilities:AP — *`; credit must match
+  `Assets:*`.
+- Violations return JSON-RPC error before the WAL entry is written.
+
+*Amount and date sanity checks.* Reject at dispatcher boundary:
+- Dates more than 7 days in the future → error.
+- Dates more than 2 years in the past → error (typo guard for current year).
+- Negative amounts on expense legs → error.
+- Single-entry amounts above a configurable threshold (default $25,000)
+  require an explicit `confirm=true` argument.
+
+*Dry-run / preview mode.* Each write tool gains a `plan_*` sibling
+(`plan_book_invoice`, `plan_record_eco`, `plan_record_payment`) that returns
+the journal entry that *would* be posted — accounts, amounts, debits/credits,
+resolved vendor — without opening a GnuCash session or writing to the WAL.
+Enables agent self-review and end-user confirmation flows.
+
+*Trial-balance assertion after every write.* Inside `book_session()`, after
+`session.save()` and before `session.end()`, sum all account balances rooted
+at Assets, Liabilities, Equity, Income, Expenses; assert the accounting
+equation holds within $0.01. On failure: log, set WAL `committed_at` anyway
+(the save already happened) but emit a `trial_balance_violation` field so
+operators can investigate. Cheap; catches binding-level imbalance bugs.
+
+*Source-doc attachment.* Every write tool requires a `source_ref` argument
+(file path on host, email Message-ID, manual entry note ≥ 10 chars). Stored
+verbatim in the GnuCash transaction's `notes` slot and in the WAL entry.
+Makes after-the-fact audit tractable and creates a paper trail back to the
+originating document.
+
+**Tests:**
+```
+T8.6.1   Posting same invoice twice (same vendor, invoice#, amount, date)
+         returns idempotency error on second attempt; ledger unchanged
+T8.6.2   Idempotency key survives WAL replay: replay does not double-post
+         already-committed entries
+T8.6.3   book_invoice with vendor "ABC Electric" when only "ABC Electrical LLC"
+         exists returns error listing the fuzzy match
+T8.6.4   book_invoice with credit account = "Assets:Checking" rejected by
+         allowlist before WAL write
+T8.6.5   record_eco with debit = "Expenses:Construction:Framing" rejected
+         (must be Change Orders subtree)
+T8.6.6   Date 30 days in future rejected; date 5 days in future accepted
+T8.6.7   Date 3 years in past rejected
+T8.6.8   Amount $30,000 without confirm=true rejected; same with confirm=true
+         posts successfully
+T8.6.9   plan_book_invoice returns full JE without opening session, without
+         writing WAL, without creating .LCK file
+T8.6.10  Trial balance assertion fires (logged, surfaced in response) when
+         accounting equation violated by ≥ $0.01
+T8.6.11  Write tool called without source_ref returns argument validation
+         error; with source_ref, value appears in transaction notes slot
+```
+
+---
+
 ### Phase 8 exit criteria
 
 - Swift proxy registered via launchd, starts at login, survives crash-restart
