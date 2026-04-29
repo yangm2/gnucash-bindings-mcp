@@ -298,3 +298,51 @@ T8.5.6  10-step CoWork agentic task: only 1 cold start (first call), remaining 9
 
 ---
 
+### M8.7 — Replace `pgrep` singleton guard with lock file
+
+**Goal:** Remove the `Process()`/`pgrep -x gnucash-mcp` call in `App.swift` that
+detects duplicate proxy instances. A lock file is simpler, more portable (no
+dependency on `pgrep` being present), and works correctly under sandbox.
+
+**Approach:**
+- On startup, open `$TMPDIR/gnucash-mcp.lock` (or `~/.local/share/gnucash-mcp/run.lock`)
+  and call `flock(fd, LOCK_EX | LOCK_NB)` via `Darwin.flock`
+- If the lock is held → another instance is running → exit with a clear error message
+- Hold the lock for the lifetime of the process (the fd is closed when the process exits)
+- Remove the `shellOutput()` helper in `App.swift` if this is its only caller
+
+**Tests:**
+```
+T8.7.1  Second invocation with lock already held exits non-zero and prints "already running"
+T8.7.2  After first process exits, lock is released and a new invocation succeeds
+```
+
+---
+
+### M8.8 — Replace `container system status/start` CLI calls with SDK
+
+**Goal:** Remove the two `Process()` calls in `ContainerAPIClient.swift`
+(`ContainerSystem.ensureRunning()`) that shell out to the `container` CLI.
+The comment already marks this as a TODO pending SDK documentation stability.
+
+**Approach:**
+- Use `LiveManagedContainerBackend` (already imported via `ContainerAPIClient`) to check
+  whether the container system daemon is reachable: attempt a lightweight SDK call
+  (e.g. `backend.images()`) and treat a connection failure as "system not running"
+- If not running, surface a clear `ContainerError.containerSystemNotRunning` rather than
+  attempting to start it programmatically (starting the daemon from inside an app is
+  outside the SDK's intended use; users should have the daemon running)
+- Remove `ContainerSystem.ensureRunning()` or replace its body with the SDK check
+
+**Prerequisite:** Verify that the Container SDK XPC connection error is reliably
+distinguishable from other errors (e.g. image-not-found) so the not-running path
+is unambiguous.
+
+**Tests:**
+```
+T8.8.1  When SDK backend returns a connection error, proxy exits with ContainerError.containerSystemNotRunning
+T8.8.2  No Process() calls remain in ContainerAPIClient.swift (static assertion / grep in CI)
+```
+
+---
+
