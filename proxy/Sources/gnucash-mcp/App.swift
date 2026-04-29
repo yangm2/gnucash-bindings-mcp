@@ -32,8 +32,9 @@ extension GnuCashMCP {
             }
 
             fputs("gnucash-mcp: checking image\n", stderr)
+            let containerBackend = LiveManagedContainerBackend()
             do {
-                guard try ContainerSystem.imageExists("gnucash-mcp:latest") else {
+                guard try await containerBackend.imageExists("gnucash-mcp:latest") else {
                     fputs(
                         "error: container image 'gnucash-mcp:latest' not found\n"
                             + "       Build it first: mise build\n",
@@ -54,7 +55,7 @@ extension GnuCashMCP {
                 fputs("error: could not attach sparsebundle: \(error)\n", stderr)
                 Darwin.exit(1)
             }
-            let pool = ContainerPool()
+            let pool = ContainerPool { try await GnuCashContainerClient(backend: containerBackend) }
             setupSignalHandlers(pool: pool, sparsebundle: sparsebundle)
 
             fputs("gnucash-mcp: entering stdio transport\n", stderr)
@@ -70,7 +71,9 @@ extension GnuCashMCP {
             let termSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
             termSource.setEventHandler {
                 Task {
+                    fputs("gnucash-mcp: received SIGTERM — draining pool\n", stderr)
                     await pool.drain()
+                    fputs("gnucash-mcp: detaching sparsebundle\n", stderr)
                     try? sparsebundle.detach()
                     Darwin.exit(0)
                 }
@@ -79,7 +82,9 @@ extension GnuCashMCP {
             let intSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
             intSource.setEventHandler {
                 Task {
+                    fputs("gnucash-mcp: received SIGINT — draining pool\n", stderr)
                     await pool.drain()
+                    fputs("gnucash-mcp: detaching sparsebundle\n", stderr)
                     try? sparsebundle.detach()
                     Darwin.exit(0)
                 }

@@ -435,3 +435,63 @@ the exit-criteria checklist. All resolved.
 
 ---
 
+### Learnings — ContainerKit SDK migration and lifecycle fix
+
+Discovered post-phase-5 during interactive testing. Root-caused via `lsof` on
+the stale mount and confirmed in `~/Library/Logs/Claude/mcp-server-gnucash-myproject.log`.
+
+**Bug: VM outlives proxy exit, blocking sparsebundle detach.**
+`hdiutil detach /Volumes/GnuCash-Project` failed with "Resource busy" after
+the proxy had exited. `lsof +D /Volumes/GnuCash-Project` showed
+`com.apple.Virtualization.VirtualMachine` (PID from the previous session) still
+holding the volume open. Root cause: `ContainerAPIClient` used `container run`
+via a `Process` object. `process.terminate()` sends SIGTERM to the `container
+run` CLI, but the VM is managed by the `com.apple.container.apiserver` daemon
+as a separate process and is not a child of the CLI. The CLI can exit without
+stopping the VM.
+
+**Fix: migrate to ContainerAPIClient SDK (`apple/container` 0.12.1).**
+`client.delete(id:force:true)` is a fully async XPC call to the daemon that
+stops the VM and removes the container. It returns only after the VM has halted.
+`ContainerPool.drain()` now `await`s this call before returning, so
+`sparsebundle.detach()` is guaranteed to run after all VM file handles are
+released. This closes the dangling-mount bug for clean exits (SIGTERM/SIGINT/EOF).
+
+SIGKILL crash path remains an open gap (no signal handler fires). Mitigation:
+on the next `gnucash-mcp start`, `attachIfNeeded()` detects the stale mount and
+logs a warning; a follow-on hardening task (M8.7) should sweep stale containers
+at startup with `client.delete` before proceeding.
+
+**Protocol pattern (from buck2-macos-local-reapi).**
+`ManagedContainerBackend` and `ManagedContainerProcess` are thin protocols over
+the SDK types, following the same `ContainerBackend`/`ContainerProcess` pattern
+validated in the buck2-macos-local-reapi project. This makes `ContainerPool`
+testable against a `MockContainer` without a running daemon.
+`ContainerPoolTests.swift` asserts eight lifecycle invariants:
+- drain empties pool and awaits terminate
+- drain on empty pool is a no-op
+- acquire discards dead containers and starts fresh
+- acquire returns warm container when alive
+- cold start when pool is empty
+- at most one warm container at a time
+- reaper terminates after TTL
+- drain cancels reaper (no double-terminate)
+
+**`GnuCashContainerClient.isAlive` (KU-11 sleep/wake guard).**
+The previous `Process.isRunning` check was replaced by a background `Task` that
+calls `process.wait()` and sets `_isAlive = false` when the worker exits
+unexpectedly. This preserves the sleep/wake guard without requiring a
+synchronous liveness check.
+
+**`mise install-app` now also installs `bin/gnucash-browse`.**
+The script was in `bin/` but not copied to `~/.local/bin` by `install-app`, and
+not removed by `uninstall-app`. Fixed.
+
+**ContainerSystem CLI calls retained at startup.**
+`ContainerSystem.ensureRunning()` still shells out to `container system status`
+and `container system start`. The ContainerKit SDK does not yet expose a
+stable API for system-level start/stop (as of 0.12.1). `imageExists()` was
+migrated to `ClientImage.get(reference:)` in `LiveManagedContainerBackend`.
+
+---
+

@@ -13,14 +13,14 @@ primary read-write interface; the macOS GnuCash GUI is read-only.
 
 ## Prerequisites
 
-| Requirement | Notes |
-|---|---|
-| macOS 26+ | Apple Container requires macOS 26 |
-| [Apple Container](https://github.com/apple/container) | Install via released binary |
-| GnuCash 5.x | `/Applications/GnuCash.app` |
-| [mise](https://mise.jdx.dev) | Task runner; `brew install mise` |
-| Swift 6 toolchain | Included with Xcode 26+ |
-| Claude Desktop | For MCP registration |
+| Requirement | Minimum version | Notes |
+|---|---|---|
+| macOS | 26.0 | Required by Apple Container and the Swift proxy |
+| [Apple Container](https://github.com/apple/container) | 0.12.1 | Install via released binary; proxy links against the `container` SDK at this version |
+| GnuCash | 5.x | `/Applications/GnuCash.app`; container image uses GnuCash 5.14 from Ubuntu 26.04 universe |
+| [mise](https://mise.jdx.dev) | any recent | Task runner; `brew install mise` |
+| Swift toolchain | 6.x | Included with Xcode 26+ |
+| Claude Desktop | any recent | For MCP registration |
 
 ---
 

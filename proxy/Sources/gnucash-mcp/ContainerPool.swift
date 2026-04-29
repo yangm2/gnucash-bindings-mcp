@@ -1,58 +1,92 @@
 import Foundation
 
-// Size-1 container pool with 5-second TTL.
+// Size-1 pool of PooledContainer instances with a TTL-based reaper.
 //
 // Strategy: after each dispatch, immediately pre-start a new container. The
 // Python worker blocks on sys.stdin.buffer.read() until stdin closes, so the
-// warm container just sits waiting. On the next tool call we write to it
+// warm container just sits waiting. On the next tool call we hand it the request
 // directly and avoid startup latency. If no call arrives within `ttl` seconds,
 // the reaper kills the waiting container.
+//
+// Lifecycle invariants (asserted by ContainerPoolTests):
+//   - At most one warm container exists at any time.
+//   - After drain(), isWarm is false and the warm container's terminate() has been awaited.
+//   - After reap(), the reaped container's terminate() has been awaited.
+//   - acquire() discards a dead container (isAlive == false) and starts a fresh one.
 actor ContainerPool {
-    private var warm: ContainerAPIClient?
+    private var warm: (any PooledContainer)?
     private var warmSince: Date?
     private let ttl: TimeInterval
     private var reaperTask: Task<Void, Never>?
+    // Factory injected at init; production code passes GnuCashContainerClient,
+    // tests pass a mock. Async because container creation is async.
+    private let factory: @Sendable () async throws -> any PooledContainer
 
-    init(ttl: TimeInterval = 5) {
+    init(
+        ttl: TimeInterval = 5,
+        factory: @escaping @Sendable () async throws -> any PooledContainer
+    ) {
         self.ttl = ttl
+        self.factory = factory
     }
 
-    /// Acquire a ready-to-use client. Validates liveness for sleep/wake safety (KU-11).
-    func acquire() throws -> ContainerAPIClient {
-        if let client = warm, client.isAlive {
-            warm = nil
-            warmSince = nil
-            cancelReaper()
-            return client
+    // MARK: - Acquire / release
+
+    /// Returns a ready-to-use container. Validates liveness for sleep/wake safety (KU-11).
+    func acquire() async throws -> any PooledContainer {
+        if let client = warm {
+            if await client.isAlive {
+                fputs("pool: acquired warm container \(client.id)\n", stderr)
+                warm = nil
+                warmSince = nil
+                cancelReaper()
+                return client
+            } else {
+                // Dead warm container (e.g. OS killed VM after sleep/wake).
+                fputs("pool: warm container \(client.id) is dead, discarding\n", stderr)
+                await client.terminate()
+                warm = nil
+                warmSince = nil
+                cancelReaper()
+            }
         }
-        // Warm client gone or stale — start fresh.
-        warm = nil
-        warmSince = nil
-        return try ContainerAPIClient()
+        fputs("pool: cold start — no warm container\n", stderr)
+        return try await factory()
     }
 
-    /// Release after use: pre-start next container and arm the reaper.
+    /// Called after dispatch completes: pre-starts the next container for warm reuse.
     func release() {
-        do {
-            let next = try ContainerAPIClient()
-            warm = next
-            warmSince = Date()
-            armReaper()
-        } catch {
-            // If pre-start fails, next acquire() will just start on demand.
+        Task {
+            do {
+                let next = try await factory()
+                fputs("pool: pre-started warm container \(next.id)\n", stderr)
+                warm = next
+                warmSince = Date()
+                armReaper()
+            } catch {
+                // If pre-start fails, next acquire() starts on demand — not fatal.
+                fputs("pool: pre-start failed: \(error)\n", stderr)
+            }
         }
     }
 
-    // Drain: terminate warm container (called on SIGTERM/SIGINT).
-    func drain() {
+    /// Terminate the warm container, if any. Called on SIGTERM, SIGINT, and stdin EOF.
+    /// Returns only after the container has fully halted (via PooledContainer.terminate()).
+    func drain() async {
         cancelReaper()
-        warm?.terminate()
+        if let client = warm {
+            fputs("pool: draining warm container \(client.id)\n", stderr)
+            await client.terminate()
+            fputs("pool: drained\n", stderr)
+        } else {
+            fputs("pool: drain — no warm container\n", stderr)
+        }
         warm = nil
         warmSince = nil
     }
 
     var isWarm: Bool {
-        warm?.isAlive == true
+        warm != nil
     }
 
     var lastActivityDate: Date? {
@@ -75,12 +109,15 @@ actor ContainerPool {
         reaperTask = nil
     }
 
-    private func reap() {
+    private func reap() async {
         guard let since = warmSince,
-              Date().timeIntervalSince(since) >= ttl
+              Date().timeIntervalSince(since) >= ttl,
+              let client = warm
         else { return }
-        warm?.terminate()
+        fputs("pool: TTL expired, reaping \(client.id)\n", stderr)
         warm = nil
         warmSince = nil
+        await client.terminate()
+        fputs("pool: reaped \(client.id)\n", stderr)
     }
 }

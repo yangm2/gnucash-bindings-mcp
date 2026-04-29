@@ -67,7 +67,11 @@ struct SparsebundleManager {
     }
 
     func detach() throws {
-        guard isMounted else { return }
+        guard isMounted else {
+            fputs("sparsebundle: detach skipped — not mounted\n", stderr)
+            return
+        }
+        fputs("sparsebundle: detaching \(mountPoint)\n", stderr)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
         process.arguments = ["detach", mountPoint]
@@ -76,7 +80,9 @@ struct SparsebundleManager {
         try process.run()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
+            fputs("sparsebundle: detach failed (status \(process.terminationStatus))\n", stderr)
             throw SparsebundleError.detachFailed(process.terminationStatus)
         }
+        fputs("sparsebundle: detached \(mountPoint)\n", stderr)
     }
 }

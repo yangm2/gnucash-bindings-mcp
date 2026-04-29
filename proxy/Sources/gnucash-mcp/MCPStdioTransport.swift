@@ -45,10 +45,14 @@ actor MCPStdioTransport {
                 }
             }
         } catch {
-            // stdin read error — fall through to cleanup
+            fputs("gnucash-mcp: stdin read error: \(error) — draining pool\n", stderr)
         }
-        // stdin closed — drain pool and detach
+        // stdin closed (EOF) or read error — drain pool before detaching sparsebundle.
+        // pool.drain() awaits container termination, guaranteeing no open file handles
+        // remain on the sparsebundle volume before detach() is called.
+        fputs("gnucash-mcp: stdin EOF — draining pool\n", stderr)
         await pool.drain()
+        fputs("gnucash-mcp: detaching sparsebundle\n", stderr)
         try? sparsebundle.detach()
     }
 
@@ -102,7 +106,7 @@ actor MCPStdioTransport {
         defer { Task { await pool.release() } }
 
         let requestData = try encoder.encode(request)
-        let responseData = try client.roundTrip(request: requestData)
+        let responseData = try await client.roundTrip(request: requestData)
         return try decoder.decode(JSONRPCResponse.self, from: responseData)
     }
 
