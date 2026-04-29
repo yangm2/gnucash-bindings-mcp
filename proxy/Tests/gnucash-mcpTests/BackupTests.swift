@@ -101,6 +101,65 @@ struct BackupTests {
         #expect(names.first == expectedOldest)
     }
 
+    // ── createBackup throws when source does not exist ────────────────────────
+
+    @Test func `create backup throws when source file missing`() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(component: "BackupTests-missing-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let missing = dir.appending(component: "ghost.gnucash")
+        // source does not exist — cp will exit non-zero
+        #expect(throws: BackupError.self) {
+            try BackupManager.createBackup(bookURL: missing)
+        }
+    }
+
+    // ── pruneBackups with keepCount 0 deletes all backups ────────────────────
+
+    @Test func `prune backups with keepCount 0 deletes all`() throws {
+        let book = try makeTempBook()
+        let dir = book.deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyyMMdd-HHmmss"
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        for i in 0 ..< 3 {
+            let ts = fmt.string(from: base.addingTimeInterval(Double(i * 60)))
+            let name = "project.gnucash.pre-\(ts).gnucash"
+            try Data("backup \(i)".utf8).write(to: dir.appending(component: name))
+        }
+
+        try BackupManager.pruneBackups(bookURL: book, keepCount: 0)
+
+        let remaining = try FileManager.default
+            .contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("project.gnucash.pre-") }
+        #expect(remaining.isEmpty)
+        // Live book untouched
+        #expect(FileManager.default.fileExists(atPath: book.path))
+    }
+
+    // ── pruneBackups ignores files that don't match the backup extension ──────
+
+    @Test func `prune backups ignores non-gnucash files`() throws {
+        let book = try makeTempBook()
+        let dir = book.deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // A file that starts with the backup prefix but has wrong extension
+        let impostor = dir.appending(component: "project.gnucash.pre-20240101-120000.log")
+        try Data("not a backup".utf8).write(to: impostor)
+
+        try BackupManager.pruneBackups(bookURL: book, keepCount: 0)
+
+        // Impostor left alone (wrong extension)
+        #expect(FileManager.default.fileExists(atPath: impostor.path))
+    }
+
     // ── pruneBackups with fewer files than keepCount leaves all untouched ──────
 
     @Test func `prune backups no op when below keep count`() throws {

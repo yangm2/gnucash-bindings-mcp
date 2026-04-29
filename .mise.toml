@@ -205,15 +205,18 @@ container run --rm \
 
 [tasks.test]
 description = "Run test suite in dev container"
+usage = 'arg "[filter]" help="pytest node-id or file path passed as -k filter" default=""'
 depends = []
 run = """
+PYTEST_ARGS="tests/ -v"
+[ -n "${usage_filter:-}" ] && PYTEST_ARGS="tests/ -v -k '${usage_filter}'"
 container run --rm \
   -v ${WORKER_DIR}/gnucash_mcp:/src/gnucash_mcp:ro \
   -v ${WORKER_DIR}/scripts:/src/scripts:ro \
   -v ${WORKER_DIR}/tests:/src/tests:ro \
   --entrypoint bash \
   gnucash-mcp:dev \
-  -c "cd /src && uv run --active --frozen pytest tests/ -v"
+  -c "cd /src && uv run --active --frozen pytest ${PYTEST_ARGS}"
 """
 
 [tasks.swiftfmt]
@@ -232,21 +235,22 @@ swiftlint lint $SANDBOX_FLAG ${PROXY_DIR}
 """
 
 [tasks.swift-test]
-description = "Run Swift proxy tests; pass 'coverage' as first arg to collect and report line coverage"
+description = "Run Swift proxy tests"
+usage = 'flag "--coverage" help="Collect and report line coverage after tests"'
 run = """
 SANDBOX_FLAG=${CLAUDECODE:+--disable-sandbox}
 BUILD_PATH="$TMPDIR/gnucash-mcp-build"
 COVERAGE_FLAG=""
-[ "${1:-}" = "coverage" ] && COVERAGE_FLAG="--enable-code-coverage"
+[ "${usage_coverage:-false}" = "true" ] && COVERAGE_FLAG="--enable-code-coverage"
 cd ${PROXY_DIR} && \
 swift test $SANDBOX_FLAG --build-path "$BUILD_PATH" $COVERAGE_FLAG
 if [ -n "$COVERAGE_FLAG" ]; then
-  PROFDATA="$BUILD_PATH/debug/codecov/default.profdata"
-  TEST_BIN=$(find "$BUILD_PATH/debug" -name "gnucash-mcpPackageTests.xctest" | head -1)
+  PROFDATA=$(find "$BUILD_PATH" -name "default.profdata" | grep codecov | head -1)
+  TEST_BIN=$(find "$BUILD_PATH" -path "*/gnucash-mcpPackageTests.xctest/Contents/MacOS/gnucash-mcpPackageTests" ! -name "*.dSYM" | head -1)
   xcrun llvm-cov report \
     --instr-profile="$PROFDATA" \
-    "$TEST_BIN/Contents/MacOS/gnucash-mcpPackageTests" \
-    --ignore-filename-regex='\\.build|Tests/'
+    "$TEST_BIN" \
+    --sources "${PROXY_DIR}/Sources"
 fi
 """
 

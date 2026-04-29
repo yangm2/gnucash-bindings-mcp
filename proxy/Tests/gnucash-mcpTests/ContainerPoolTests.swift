@@ -200,6 +200,20 @@ struct ContainerPoolTests {
         #expect(!(await pool.isWarm))
     }
 
+    // ── Invariant: release() factory-throws logs error and leaves pool cold ─────
+
+    @Test("release() when factory throws leaves pool empty and does not crash")
+    func releaseFactoryThrows() async throws {
+        struct FactoryError: Error {}
+        let pool = ContainerPool { throw FactoryError() }
+
+        // release() swallows the factory error and logs it — pool stays cold.
+        await pool.release()
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(!(await pool.isWarm))
+    }
+
     // ── Invariant: ordering — drain completes before detach is safe ───────────
 
     @Test("drain() awaits terminate() so no concurrent container activity follows")

@@ -11,6 +11,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.7.1"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.99.0"),
         .package(url: "https://github.com/apple/container.git", exact: "0.12.1"),
+        .package(url: "https://github.com/typelift/SwiftCheck.git", from: "0.12.0"),
     ],
     targets: [
         .executableTarget(
@@ -28,6 +29,7 @@ let package = Package(
             dependencies: [
                 "gnucash-mcp",
                 .product(name: "ContainerResource", package: "container"),
+                .product(name: "SwiftCheck", package: "SwiftCheck"),
             ],
             path: "Tests/gnucash-mcpTests",
         ),
