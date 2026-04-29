@@ -3,13 +3,16 @@ lockfile = true
 
 [env]
 WORKER_DIR = "{{config_root}}/worker"
+PROXY_DIR = "{{config_root}}/proxy"
+DATA_DIR = "{{config_root}}/.test-data"
+GNUCASH_BOOK_PATH = "/data/project.gnucash"
 
 [tools]
 container = "latest"
 swiftformat = { version = "latest", no_app = "true", rename_exe = "swiftformat" }
 swiftlint = "latest"
 
-# -- container system -- 
+# -- container system --
 
 [tasks.start-container-system]
 description = "Start container system (if not already running)"
@@ -30,6 +33,93 @@ run = "container image delete --force gnucash-mcp:dev gnucash-mcp:latest"
 [tasks.shutdown-container-system]
 description = "Shutdown container system"
 run = "container system stop"
+
+# ── install ───────────────────────────────────────────────────────────────────
+
+[tasks.install-all]
+description = "One-time setup: build images, init book, create sparsebundle, install proxy. For upgrades use install-app."
+depends = ["create-book-volume", "install-app"]
+
+[tasks.create-book-volume]
+description = "Create ~/books/project.sparsebundle and migrate book into it (one-time)"
+depends = ["build", "init-book"]
+run = "{{config_root}}/bin/create-book-volume.zsh"
+
+[tasks.build-proxy]
+description = "Build gnucash-mcp Swift binary (release)"
+run = """
+SANDBOX_FLAG=${CLAUDECODE:+--disable-sandbox}
+cd ${PROXY_DIR} && \
+  swift build --configuration release $SANDBOX_FLAG \
+    --build-path "$TMPDIR/gnucash-mcp-build"
+"""
+
+[tasks.uninstall-app]
+description = "Remove gnucash-mcp binary, LaunchAgent plist, and Claude Desktop registration"
+env = { INSTALL_DIR = "$HOME/.local/bin" }
+run = """
+set -euo pipefail
+CLAUDE_CONFIG="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
+PLIST="$HOME/Library/LaunchAgents/com.gnucash-mcp.myproject.plist"
+BINARY="${INSTALL_DIR}/gnucash-mcp"
+
+# Remove mcpServers entry from Claude Desktop config
+if [[ -f "$CLAUDE_CONFIG" ]]; then
+  python3 - "$CLAUDE_CONFIG" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path) as f:
+    cfg = json.load(f)
+cfg.get("mcpServers", {}).pop("gnucash-myproject", None)
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2, sort_keys=True)
+    f.write("\\n")
+PY
+  echo "Removed gnucash-myproject from $CLAUDE_CONFIG"
+else
+  echo "Claude Desktop config not found — skipping"
+fi
+
+# Unload and remove LaunchAgent
+if [[ -f "$PLIST" ]]; then
+  launchctl unload "$PLIST" 2>/dev/null || true
+  rm "$PLIST"
+  echo "Removed $PLIST"
+else
+  echo "LaunchAgent not found — skipping"
+fi
+
+# Remove binary
+if [[ -f "$BINARY" ]]; then
+  rm "$BINARY"
+  echo "Removed $BINARY"
+else
+  echo "Binary not found — skipping"
+fi
+
+echo ""
+echo "Done. Restart Claude Desktop to deregister the server."
+"""
+
+[tasks.install-app]
+description = "Build and install gnucash-mcp binary, then register with Claude Desktop (safe to re-run for upgrades)"
+depends = ["build-proxy"]
+env = { INSTALL_DIR = "$HOME/.local/bin" }
+run = """
+set -euo pipefail
+mkdir -p "${INSTALL_DIR}"
+
+echo "Installing to ${INSTALL_DIR}/gnucash-mcp…"
+cp "$TMPDIR/gnucash-mcp-build/release/gnucash-mcp" "${INSTALL_DIR}/gnucash-mcp"
+chmod +x "${INSTALL_DIR}/gnucash-mcp"
+
+echo "Registering with Claude Desktop…"
+"${INSTALL_DIR}/gnucash-mcp" install
+
+echo ""
+echo "Done. Restart Claude Desktop to pick up the new version."
+echo "Binary: ${INSTALL_DIR}/gnucash-mcp"
+"""
 
 # ── build ─────────────────────────────────────────────────────────────────────
 
@@ -92,7 +182,7 @@ container run --rm \
 description = "Format Swift code"
 run = """
 SANDBOX_FLAG=${CLAUDECODE:- --verbose}
-swiftformat $SANDBOX_FLAG {{config_root}}/proxy
+swiftformat $SANDBOX_FLAG ${PROXY_DIR}
 """
 
 [tasks.swiftlint]
@@ -100,14 +190,14 @@ description = "Lint Swift code"
 depends = ["swiftfmt"]
 run = """
 SANDBOX_FLAG=${CLAUDECODE:- --fix}
-swiftlint lint $SANDBOX_FLAG {{config_root}}/proxy
+swiftlint lint $SANDBOX_FLAG ${PROXY_DIR}
 """
 
 [tasks.swift-test]
 description = "Run Swift proxy tests"
 run = """
 SANDBOX_FLAG=${CLAUDECODE:+--disable-sandbox}
-cd {{config_root}}/proxy && \
+cd ${PROXY_DIR} && \
 swift test $SANDBOX_FLAG --build-path "$TMPDIR/gnucash-mcp-build"
 """
 
@@ -120,8 +210,8 @@ description = """Initialize GnuCash book in .test-data/
 depends = []
 run = """
 container run --rm \
-  -v {{config_root}}/.test-data:/data:rw \
-  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
+  -v ${DATA_DIR}:/data:rw \
+  -e GNUCASH_BOOK_PATH \
   --entrypoint python3 \
   gnucash-mcp:latest \
   /src/scripts/init_book.py
@@ -132,8 +222,8 @@ description = "One-shot dispatch: pipe JSON-RPC on stdin → stdout"
 depends = ["init-book"]
 run = """
 container run --rm -i \
-  -v {{config_root}}/.test-data:/data:rw \
-  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
+  -v ${DATA_DIR}:/data:rw \
+  -e GNUCASH_BOOK_PATH \
   gnucash-mcp:latest
 """
 
@@ -142,8 +232,8 @@ description = "Interactive shell in prod container"
 depends = ["init-book"]
 run = """
 container run --rm -it \
-  -v {{config_root}}/.test-data:/data:rw \
-  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
+  -v ${DATA_DIR}:/data:rw \
+  -e GNUCASH_BOOK_PATH \
   --entrypoint /bin/bash \
   gnucash-mcp:latest
 """
@@ -153,17 +243,17 @@ description = "Interactive shell in dev container with source mounted rw"
 depends = ["build-dev", "init-book"]
 run = """
 container run --rm -it \
-  -v {{config_root}}/.test-data:/data:rw \
+  -v ${DATA_DIR}:/data:rw \
   -v ${WORKER_DIR}/gnucash_mcp:/src/gnucash_mcp:rw \
   -v ${WORKER_DIR}/scripts:/src/scripts:rw \
-  -e GNUCASH_BOOK_PATH=/data/project.gnucash \
+  -e GNUCASH_BOOK_PATH \
   --entrypoint /bin/bash \
   gnucash-mcp:dev
 """
 
 [tasks.clean]
 description = "Remove ephemeral test data"
-run = "rm -f {{config_root}}/.test-data/*.gnucash* {{config_root}}/.test-data/*.jsonl"
+run = "rm -f ${DATA_DIR}/*.gnucash* ${DATA_DIR}/*.jsonl"
 
 [tasks.cleaner]
 description = "Clean all build artifacts and test data (images, volumes, etc.)"

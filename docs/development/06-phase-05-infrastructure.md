@@ -1,4 +1,4 @@
- p# Phase 5 — Infrastructure: Sparsebundle, Wrappers, and Snapshots
+# Phase 5 — Infrastructure: Sparsebundle, Wrappers, and Snapshots
 
 **Goal:** Harden the operational story. The sparsebundle is the authoritative
 storage medium. The zsh wrappers handle the full lifecycle cleanly. Snapshots work.
@@ -24,6 +24,8 @@ T5.1.4  GnuCash Python bindings open the file via /data/project.gnucash in conta
 T5.1.5  hdiutil detach /Volumes/GnuCash-Project succeeds cleanly
 T5.1.6  Re-running script with volume already present aborts with clear error message
 ```
+
+**Implementation notes (M5.1):** Implemented. Manual tests T5.1.1–T5.1.6 pass.
 
 ---
 
@@ -212,6 +214,35 @@ T5.2.13 Claude Desktop shows gnucash-myproject as connected after gnucash-mcp in
 T5.2.14 CoWork session can call get_project_summary() via SDK bridge (manual)
 ```
 
+**Implementation notes (M5.2):**
+
+- **`@main` cannot appear in `main.swift`**: Swift's designated top-level file conflicts with
+  the `@main` attribute. Resolution: command struct in `App.swift`, `main.swift` calls
+  `GnuCashMCP.main()` directly (no `await` needed).
+- **`throw ExitCode.failure` ambiguous**: Compiler resolves `.failure` against `Foundation.exit()`
+  parameter types incorrectly. Use `Darwin.exit(1)` instead.
+- **`for try await` in a non-throwing async func**: `AsyncLineSequence` is throwing; wrap the
+  loop in `do { } catch { }` inside the `async` (non-throws) `run()`.
+- **swiftformat strips `: Sendable`**: The `redundantSendable` rule removes conformances needed
+  for Swift 6 strict concurrency (`static let` properties, cross-actor types). Disabled via
+  `proxy/.swiftformat` (`--disable redundantSendable`). Rule name confirmed via
+  `swiftformat --rules | grep -i sendable`.
+- **`indirect` required on recursive enum**: `JSONSchema` cases nest `JSONSchema` values —
+  compiler requires `indirect enum JSONSchema`.
+- **ContainerKit SDK**: `ContainerSystem.ensureRunning()` and `imageExists()` currently use
+  `Process`-based `/usr/local/bin/container` CLI calls. Marked with TODO to migrate to
+  ContainerKit framework when macOS 26 SDK docs stabilize.
+- **`--build-path "$TMPDIR/..."`** in the `swift-test` mise task directs all SwiftPM
+  artifacts (including dependency git clones) to TMPDIR, which is sandbox-writable.
+  This was the real fix for earlier git template copy errors — `GIT_TEMPLATE_DIR=""`
+  was a red herring and has been removed from the task.
+- **swiftformat cache write error**: swiftformat attempts to write to
+  `~/Library/Caches/com.charcoaldesign.swiftformat/` which is outside Claude Code's
+  sandbox; causes non-zero exit on `mise swiftfmt` inside Claude Code sessions. Source
+  files are formatted correctly; build and tests pass. Known sandbox limitation.
+- Automated tests T5.2.2–T5.2.4a pass (9 Swift unit tests in `MCPTransportTests.swift`).
+  T5.2.1, T5.2.1a, T5.2.1b, T5.2.5–T5.2.14 require a running container system (manual).
+
 ---
 
 ### M5.3 — GUI wrapper (gnucash-browse)
@@ -240,6 +271,13 @@ T5.3.7  All Phase 1 transactions visible and correct in GUI (manual cross-check)
 T5.3.8  GnuCash force-quit (Activity Monitor) → EXIT trap fires → sparsebundle detached
         (KU-7 confirmation: test `wait $PID` vs `open --wait-apps` for this case)
 ```
+
+**Implementation notes (M5.3):** `bin/gnucash-browse` implemented and chmod +x.
+
+- **KU-7 resolved**: `wait $GNUCASH_PID` (direct PID wait) blocks until GnuCash fully
+  releases all file handles before the EXIT trap detaches the sparsebundle. `open --wait-apps`
+  returns before handles are closed and is not safe here (confirmed via spike).
+- T5.3.1, T5.3.2, T5.3.3 can be verified without the GUI. T5.3.4–T5.3.8 are manual.
 
 ---
 
@@ -271,6 +309,9 @@ T5.4.5  Restore drill (manual, document in TEST_RESULTS.md):
         Post a bad transaction → proxy creates backup → post another transaction →
         open backup file directly in GnuCash → verify bad transaction absent
 ```
+
+**Implementation notes (M5.4):** `BackupManager.swift` implemented. T5.4.1–T5.4.4 pass
+(5 Swift unit tests). T5.4.5 is manual.
 
 ---
 

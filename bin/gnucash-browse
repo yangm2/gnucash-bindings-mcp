@@ -1,0 +1,64 @@
+#!/usr/bin/env zsh
+# gnucash-browse — open the project book read-only in the GnuCash GUI.
+#
+# Guards against running while the MCP proxy has the volume mounted read-write,
+# and against launching a second GnuCash instance.
+#
+# Usage: bin/gnucash-browse [path/to/project.sparsebundle]
+
+set -euo pipefail
+
+BUNDLE=${1:-"$HOME/books/project.sparsebundle"}
+MOUNT="/Volumes/GnuCash-Project"
+BOOK="$MOUNT/project.gnucash"
+GNUCASH="/Applications/GnuCash.app/Contents/MacOS/GnuCash"
+
+# ── guards ────────────────────────────────────────────────────────────────────
+
+if [[ ! -e "$BUNDLE" ]]; then
+    print -u2 "error: sparsebundle not found: $BUNDLE"
+    exit 1
+fi
+
+if [[ -d "$MOUNT" ]]; then
+    print -u2 "error: $MOUNT is already mounted — MCP proxy may be running."
+    print -u2 "       Stop gnucash-mcp first, or use 'hdiutil detach $MOUNT' if it is stale."
+    exit 1
+fi
+
+if pgrep -x GnuCash > /dev/null 2>&1; then
+    print -u2 "error: GnuCash is already running. Quit it before launching gnucash-browse."
+    exit 1
+fi
+
+if [[ ! -x "$GNUCASH" ]]; then
+    print -u2 "error: GnuCash binary not found at $GNUCASH"
+    exit 1
+fi
+
+# ── attach read-only ──────────────────────────────────────────────────────────
+
+echo "Attaching $BUNDLE read-only…"
+hdiutil attach -readonly -nobrowse "$BUNDLE"
+
+# ── detach on any exit ────────────────────────────────────────────────────────
+
+detach() {
+    echo "Detaching $MOUNT…"
+    hdiutil detach "$MOUNT" 2>/dev/null || true
+}
+trap detach EXIT INT TERM
+
+# ── launch and wait ───────────────────────────────────────────────────────────
+
+echo "Opening $BOOK in GnuCash (read-only mount)…"
+"$GNUCASH" "$BOOK" &
+GNUCASH_PID=$!
+
+# wait $PID blocks until GnuCash exits and releases all file handles.
+# Preferred over 'open --wait-apps' which returns before handles are closed
+# (KU-7: confirmed via spike).
+wait $GNUCASH_PID || true
+
+echo "GnuCash exited."
+# trap fires detach on EXIT
