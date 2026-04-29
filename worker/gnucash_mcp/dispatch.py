@@ -39,11 +39,11 @@ HANDLERS = {
 
 
 def success_response(req_id, result):
-    return {"id": req_id, "result": result}
+    return {"jsonrpc": "2.0", "id": req_id, "result": result}
 
 
 def error_response(req_id, code, message):
-    return {"id": req_id, "error": {"code": code, "message": message}}
+    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}}
 
 
 def dispatch(request: dict) -> dict:
@@ -58,7 +58,10 @@ def dispatch(request: dict) -> dict:
             return error_response(req_id, -32601, f"Unknown tool: {name}")
         try:
             result = handler(**args)
-            return success_response(req_id, result)
+            return success_response(
+                req_id,
+                {"content": [{"type": "text", "text": json.dumps(result)}]},
+            )
         except Exception as exc:
             return error_response(req_id, -32603, str(exc))
 

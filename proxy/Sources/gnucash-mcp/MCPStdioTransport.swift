@@ -55,12 +55,14 @@ actor MCPStdioTransport {
     // MARK: - Dispatch
 
     private func dispatch(_ request: JSONRPCRequest) async throws -> JSONRPCResponse? {
+        // Notifications (no id, or method starting with "notifications/") never get a response.
+        if request.method.hasPrefix("notifications/") {
+            return nil
+        }
+
         switch request.method {
         case "initialize":
             return .success(id: request.id, result: initializeResult())
-
-        case "notifications/initialized":
-            return nil // no response for notifications
 
         case "tools/list":
             return try .success(id: request.id, result: toolsListResult())
@@ -126,7 +128,8 @@ actor MCPStdioTransport {
 
     private func toolsListResult() throws -> JSONValue {
         let toolsData = try encoder.encode(ToolCatalog.tools)
-        return try decoder.decode(JSONValue.self, from: toolsData)
+        let tools = try decoder.decode(JSONValue.self, from: toolsData)
+        return .object(["tools": tools])
     }
 
     private func resourcesListResult() throws -> JSONValue {

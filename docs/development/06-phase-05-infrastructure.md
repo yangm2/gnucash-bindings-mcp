@@ -208,10 +208,12 @@ T5.2.10 kill -9 on proxy → sparsebundle left attached (expected) → gnucash-m
 T5.2.11 Simulate sleep/wake: stop container externally while pool holds handle →
         next tool call detects stale handle, starts fresh container, succeeds (KU-11)
 T5.2.12 gnucash-mcp install writes correct claude_desktop_config.json command entry
-        (not streamable-http); entry points to gnucash-mcp binary with --stdio flag
+        (not streamable-http); entry points to gnucash-mcp binary with args ["start"]
 T5.2.13 Claude Desktop shows gnucash-myproject as connected after gnucash-mcp install
         + Claude Desktop restart (manual; record in TEST_RESULTS.md)
-T5.2.14 CoWork session can call get_project_summary() via SDK bridge (manual)
+T5.2.14 ~~CoWork session can call get_project_summary() via SDK bridge~~ — INVALID.
+        Local stdio servers are not bridged to CoWork. CoWork connects only to remote
+        HTTPS MCP servers. Claude Desktop is the correct surface for this server.
 ```
 
 **Implementation notes (M5.2):**
@@ -240,8 +242,19 @@ T5.2.14 CoWork session can call get_project_summary() via SDK bridge (manual)
   `~/Library/Caches/com.charcoaldesign.swiftformat/` which is outside Claude Code's
   sandbox; causes non-zero exit on `mise swiftfmt` inside Claude Code sessions. Source
   files are formatted correctly; build and tests pass. Known sandbox limitation.
+- **`args: ["--stdio"]` in Install was wrong**: The `--stdio` flag was never defined on the
+  binary — `gnucash-mcp --stdio` exits immediately with an unknown-argument error, so
+  Claude Desktop could never start the server. Fixed to `args: ["start"]`, which matches
+  the actual `Start` subcommand (the default, but explicit is safer for Desktop's launcher).
+- **CoWork cannot use local stdio servers (KU-9 correction)**: KU-9 was marked resolved
+  ("CoWork receives tools through Claude Desktop's stdio bridge"). This was incorrect.
+  Per Anthropic docs: local stdio servers work only in Claude Desktop and Claude Code;
+  CoWork connects exclusively to remote HTTPS MCP servers reachable from Anthropic's
+  infrastructure. The `ping()` success observed in the spike was likely a one-off Desktop
+  session, not a CoWork bridge. Target surface for this server is **Claude Desktop**.
 - Automated tests T5.2.2–T5.2.4a pass (9 Swift unit tests in `MCPTransportTests.swift`).
-  T5.2.1, T5.2.1a, T5.2.1b, T5.2.5–T5.2.14 require a running container system (manual).
+  T5.2.1, T5.2.1a, T5.2.1b, T5.2.5–T5.2.13 require a running container system (manual).
+  T5.2.14 is invalid and retired.
 
 ---
 
@@ -324,6 +337,101 @@ T5.4.5  Restore drill (manual, document in TEST_RESULTS.md):
 - Snapshot pre-session and file restore tested against real book data
 - `README.md` written with: prerequisites, one-time setup, daily-use workflow,
   recovery procedures
+
+---
+
+### Learnings — Claude Desktop integration debug session
+
+Bringing up `gnucash-mcp` in Claude Desktop surfaced nine bugs not caught by
+the exit-criteria checklist. All resolved.
+
+1. **Async dispatch never reached `Start.run()`.** `main.swift` called
+   `GnuCashMCP.main()` (sync) which bound to `ParsableCommand.main() -> Never`
+   instead of `AsyncParsableCommand.main()`. Symptom: `gnucash-mcp start`
+   printed usage to stdout and exited 0 — `CleanExit.helpRequest()` thrown by
+   the default sync `run()` witness. **Fix:** delete `main.swift`, annotate
+   `struct GnuCashMCP` with `@main`. This is the idiomatic Swift 6 pattern and
+   makes async dispatch unambiguous.
+
+2. **`Start.run()` constructed `SparsebundleManager` but never called
+   `attachIfNeeded()`.** The diagnostic line "attaching sparsebundle" was
+   misleading; no attach actually happened. Tools failed because
+   `/Volumes/GnuCash-Project` didn't exist. **Fix:** call
+   `try sparsebundle.attachIfNeeded()` in `Start.run()` with do/catch + clear
+   stderr error.
+
+3. **`hdiutil` stderr was suppressed via `FileHandle.nullDevice`.** Made attach
+   failures invisible. **Fix:** capture stdout/stderr with `Pipe()` and log
+   them to stderr at each step.
+
+4. **`mise install-app` only depended on `build-proxy`, not `build`.** Swift
+   binary was upgraded but the container image stayed stale when the Dockerfile
+   or worker source changed. **Fix:** `install-app` now
+   `depends = ["build-proxy", "build"]`.
+
+5. **Container image was missing the `gnucash_mcp` Python package.** The
+   Dockerfile's `uv sync --project /src` created `/src/.venv` instead of using
+   `/opt/venv`, so the package was installed in the wrong venv and
+   `python3 -m gnucash_mcp` failed with `No module named gnucash_mcp`.
+   **Fix:** add `ENV UV_PROJECT_ENVIRONMENT=/opt/venv` to the Dockerfile so
+   uv installs into the venv referenced by `PATH` and the ENTRYPOINT.
+   Root-cause diagnosis: `container run --rm --entrypoint ls gnucash-mcp:latest
+   -la /src` revealed the unexpected `/src/.venv` directory.
+
+6. **Worker response envelopes lacked `jsonrpc: "2.0"`.** `dispatch.py`'s
+   `success_response` / `error_response` returned `{"id": ..., "result": ...}`
+   only. The Swift proxy's strict `Codable` decoder rejected this with
+   `keyNotFound: Key 'jsonrpc'`, so every `tools/call` failed with a parse
+   error. **Fix:** include `"jsonrpc": "2.0"` in both helpers.
+
+7. **`toolsListResult()` returned a bare array instead of `{"tools": [...]}`.
+   ** Desktop's Zod schema rejects any `tools/list` result that isn't an object
+   with a `tools` key — silently dropped the response, causing a 30s timeout
+   every connection. Compare `resourcesListResult()` which correctly wraps with
+   `["resources": ...]`. **Fix:** wrap the encoded array in
+   `.object(["tools": tools])`.
+
+8. **`notifications/*` messages were routed to the container.** Only
+   `notifications/initialized` had an explicit `return nil` case; all others
+   fell through to `containerDispatch`, which launched a container and returned
+   an error. Symptom: `notifications/cancelled` produced a JSON-RPC error
+   response, triggering another Zod parse failure on Desktop. **Fix:** add a
+   prefix check `request.method.hasPrefix("notifications/") { return nil }`
+   before the switch.
+
+9. **`tools/call` result was a bare handler return value instead of MCP content
+   shape.** MCP spec requires `{"content": [{"type": "text", "text": "..."}]}`
+   as the result object. Desktop's schema rejected the bare array/object,
+   showing an error dialog. **Fix:** wrap handler return in
+   `{"content": [{"type": "text", "text": json.dumps(result)}]}` in
+   `dispatch.py`.
+
+### Operational notes for future debug sessions
+
+- Claude Desktop's MCP log:
+  `~/Library/Logs/Claude/mcp-server-gnucash-myproject.log`. Per-message
+  request/response pairs are logged here, including server stderr.
+- The fastest way to validate the proxy without Desktop is to drive it with a
+  here-doc of JSON-RPC requests on stdin. This isolates proxy/worker bugs
+  from any Desktop-side issue.
+- `--version` is now compiled in via `build-proxy` writing `Version.swift`
+  from `git rev-parse --short HEAD` + dirty flag + commit date.
+- CoWork does NOT bridge local stdio MCP servers — only Claude Desktop and
+  Claude Code can use them. KU-9 in `00-overview.md` was corrected.
+- Error responses from the proxy when the request id is unknown should set
+  `"id": null` rather than omitting it — Claude Desktop's Zod schema rejects
+  the missing-id form. (Not yet fixed.)
+
+### Operational notes for future debug sessions
+
+- Claude Desktop's MCP log:
+  `~/Library/Logs/Claude/mcp-server-gnucash-myproject.log`. Per-message
+  request/response pairs are logged here, including server stderr.
+- The fastest way to validate the proxy without Desktop is to drive it with a
+  here-doc of JSON-RPC requests on stdin. This isolates proxy/worker bugs
+  from any Desktop-side issue.
+- CoWork does NOT bridge local stdio MCP servers — only Claude Desktop and
+  Claude Code can use them. KU-9 in `00-overview.md` was corrected.
 
 ---
 

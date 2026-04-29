@@ -24,3 +24,4 @@ test-data/
 # Local Claude settings (machine-specific paths)
 .claude/settings.local.json
 .claude/*.local.md
+proxy/Sources/gnucash-mcp/Version.swift

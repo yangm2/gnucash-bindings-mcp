@@ -35,20 +35,35 @@ struct SparsebundleManager {
     }
 
     func attachIfNeeded() throws {
-        guard !isMounted else { return }
+        if isMounted {
+            fputs("sparsebundle: already mounted at \(mountPoint)\n", stderr)
+            return
+        }
         guard FileManager.default.fileExists(atPath: bundlePath) else {
             throw SparsebundleError.bundleNotFound(bundlePath)
         }
+        fputs("sparsebundle: attaching \(bundlePath)\n", stderr)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
         process.arguments = ["attach", "-readwrite", "-nobrowse", bundlePath]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = errPipe
         try process.run()
         process.waitUntilExit()
+        let out = String(
+            data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8,
+        ) ?? ""
+        let err = String(
+            data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8,
+        ) ?? ""
+        if !out.isEmpty { fputs("sparsebundle: hdiutil stdout: \(out)", stderr) }
+        if !err.isEmpty { fputs("sparsebundle: hdiutil stderr: \(err)", stderr) }
         guard process.terminationStatus == 0 else {
             throw SparsebundleError.attachFailed(process.terminationStatus)
         }
+        fputs("sparsebundle: mounted at \(mountPoint)\n", stderr)
     }
 
     func detach() throws {

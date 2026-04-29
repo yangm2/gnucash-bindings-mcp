@@ -30,6 +30,7 @@ ENV PATH="/root/.local/bin:${PATH}"
 # Create a venv that can see apt-installed system packages (python3-gnucash)
 RUN uv venv --system-site-packages /opt/venv
 ENV VIRTUAL_ENV=/opt/venv
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
 
 # external dependencies

@@ -113,6 +113,8 @@ enum ContainerSystem {
             let start = Process()
             start.executableURL = URL(fileURLWithPath: "/usr/local/bin/container")
             start.arguments = ["system", "start"]
+            start.standardOutput = FileHandle.nullDevice
+            start.standardError = FileHandle.nullDevice
             try start.run()
             start.waitUntilExit()
             if start.terminationStatus != 0 {

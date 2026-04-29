@@ -1,10 +1,12 @@
 import ArgumentParser
 import Foundation
 
+@main
 struct GnuCashMCP: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "gnucash-mcp",
         abstract: "GnuCash MCP proxy — stdio transport for Claude Desktop",
+        version: "\(buildCommit) (\(buildDate))",
         subcommands: [Start.self, Stop.self, Status.self, Install.self, Snapshot.self],
         defaultSubcommand: Start.self,
     )
@@ -19,25 +21,46 @@ extension GnuCashMCP {
         )
 
         mutating func run() async throws {
-            // 1. Container system check
-            try ContainerSystem.ensureRunning()
-            guard try ContainerSystem.imageExists("gnucash-mcp:latest") else {
-                fputs(
-                    "error: container image 'gnucash-mcp:latest' not found\n"
-                        + "       Build it first: mise build\n",
-                    stderr,
-                )
+            fputs("gnucash-mcp \(buildCommit) (\(buildDate)): start\n", stderr)
+
+            fputs("gnucash-mcp: checking container system\n", stderr)
+            do {
+                try ContainerSystem.ensureRunning()
+            } catch {
+                fputs("error: could not start container system: \(error)\n", stderr)
                 Darwin.exit(1)
             }
 
-            // 2. Sparsebundle and container pool
+            fputs("gnucash-mcp: checking image\n", stderr)
+            do {
+                guard try ContainerSystem.imageExists("gnucash-mcp:latest") else {
+                    fputs(
+                        "error: container image 'gnucash-mcp:latest' not found\n"
+                            + "       Build it first: mise build\n",
+                        stderr,
+                    )
+                    Darwin.exit(1)
+                }
+            } catch {
+                fputs("error: could not check container image: \(error)\n", stderr)
+                Darwin.exit(1)
+            }
+
+            fputs("gnucash-mcp: attaching sparsebundle\n", stderr)
             let sparsebundle = SparsebundleManager()
+            do {
+                try sparsebundle.attachIfNeeded()
+            } catch {
+                fputs("error: could not attach sparsebundle: \(error)\n", stderr)
+                Darwin.exit(1)
+            }
             let pool = ContainerPool()
             setupSignalHandlers(pool: pool, sparsebundle: sparsebundle)
 
-            // 3. Run stdio transport
+            fputs("gnucash-mcp: entering stdio transport\n", stderr)
             let transport = MCPStdioTransport(pool: pool, sparsebundle: sparsebundle)
             await transport.run()
+            fputs("gnucash-mcp: transport exited\n", stderr)
         }
 
         private func setupSignalHandlers(pool: ContainerPool, sparsebundle: SparsebundleManager) {
@@ -136,7 +159,7 @@ extension GnuCashMCP {
             var mcpServers = config["mcpServers"] as? [String: Any] ?? [:]
             mcpServers["gnucash-myproject"] = [
                 "command": resolvedBinary,
-                "args": ["--stdio"],
+                "args": ["start"],
             ]
             config["mcpServers"] = mcpServers
             let configData = try JSONSerialization.data(

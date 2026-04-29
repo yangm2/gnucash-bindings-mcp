@@ -3,6 +3,14 @@
 GnuCash-backed MCP server for a construction project ledger. Claude is the
 primary read-write interface; the macOS GnuCash GUI is read-only.
 
+## Supported Claude surfaces
+
+| Surface | Works? | Notes |
+|---|---|---|
+| **Claude Desktop** | ✅ | Primary target. Registered as a local stdio `command` entry. |
+| **Claude Code** | ✅ | Add to `.claude/settings.json` `mcpServers`. |
+| CoWork / Claude.ai web | ❌ | CoWork only connects to remote HTTPS MCP servers; local stdio is not bridged. |
+
 ## Prerequisites
 
 | Requirement | Notes |
@@ -28,15 +36,15 @@ Runs in order: build container image → init book → create sparsebundle →
 build and install Swift proxy → register with Claude Desktop.
 Aborts if the sparsebundle already exists.
 
-**To upgrade the proxy** (sparsebundle already in place):
+**To upgrade** (sparsebundle already in place):
 
 ```zsh
 mise install-app
 ```
 
-Rebuilds and reinstalls the Swift binary and refreshes the Claude Desktop
-registration. Safe to re-run at any time. Restart Claude Desktop after the
-first install or after any registration change.
+Rebuilds the container image and Swift binary, installs the binary to
+`~/.local/bin`, and refreshes the Claude Desktop registration. Safe to re-run
+at any time. Restart Claude Desktop after any upgrade.
 
 **To uninstall:**
 
@@ -68,9 +76,10 @@ sparsebundle and book data are left untouched.
 Claude Desktop launches `gnucash-mcp start` on connection. The proxy:
 
 1. Starts the container system if not running
-2. Attaches `~/books/project.sparsebundle` read-write at `/Volumes/GnuCash-Project`
-3. Creates a pre-session backup (`cp -c` APFS clone, ~50ms)
+2. Verifies `gnucash-mcp:latest` container image exists
+3. Attaches `~/books/project.sparsebundle` read-write at `/Volumes/GnuCash-Project`
 4. Pre-starts a warm container (blocks on stdin, ready for first tool call)
+5. Creates a `cp -c` APFS clone backup (~50ms) before the first write call in the session
 
 ### Stop the MCP server
 
@@ -173,3 +182,39 @@ container system start
 ```
 
 The proxy also starts the container system automatically on `gnucash-mcp start`.
+
+### Debugging proxy startup
+
+The proxy logs each startup step to stderr, which Claude Desktop captures in:
+
+```
+~/Library/Logs/Claude/mcp-server-gnucash-myproject.log
+```
+
+Expected lines on a clean start:
+
+```
+gnucash-mcp <commit> (<date>): start
+gnucash-mcp: checking container system
+gnucash-mcp: checking image
+gnucash-mcp: attaching sparsebundle
+sparsebundle: attaching ~/books/project.sparsebundle
+sparsebundle: mounted at /Volumes/GnuCash-Project
+gnucash-mcp: entering stdio transport
+```
+
+To validate the proxy without Claude Desktop, drive it with JSON-RPC over stdin:
+
+```zsh
+~/.local/bin/gnucash-mcp start <<'EOF'
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"cli","version":"0"}}}
+{"jsonrpc":"2.0","method":"notifications/initialized"}
+{"jsonrpc":"2.0","id":2,"method":"tools/list"}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_accounts","arguments":{}}}
+EOF
+```
+
+A successful `tools/call` response looks like:
+```json
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"[...]"}]}}
+```
