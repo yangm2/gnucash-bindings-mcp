@@ -13,7 +13,9 @@
       "Bash(mise run build-dev:*)",
       "Bash(mise run fmt:*)",
       "Bash(mise run lint:*)",
-      "Bash(container run:*)"
+      "Bash(container run:*)",
+      "WebFetch(domain:developer.apple.com)",
+      "WebFetch(domain:docs.developer.apple.com)"
     ]
   },
   "enabledPlugins": {
