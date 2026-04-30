@@ -23,6 +23,7 @@ let package = Package(
                 .product(name: "ContainerResource", package: "container"),
             ],
             path: "Sources/gnucash-mcp",
+            resources: [.process("Resources")],
         ),
         .testTarget(
             name: "gnucash-mcpTests",
