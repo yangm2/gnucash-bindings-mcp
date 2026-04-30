@@ -51,35 +51,18 @@ run = """
 set -euo pipefail
 APPDIR="$HOME/Library/Application Support/gnucash-mcp"
 BROWSE_DIR="$HOME/.local/bin"
-CLAUDE_CONFIG="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
 PLIST="$HOME/Library/LaunchAgents/com.gnucash-mcp.myproject.plist"
 BINARY="${APPDIR}/gnucash-mcp"
 
-# Remove mcpServers entry from Claude Desktop config
-if [[ -f "$CLAUDE_CONFIG" ]]; then
-  python3 - "$CLAUDE_CONFIG" <<'PY'
-import json, sys
-path = sys.argv[1]
-with open(path) as f:
-    cfg = json.load(f)
-cfg.get("mcpServers", {}).pop("gnucash-myproject", None)
-with open(path, "w") as f:
-    json.dump(cfg, f, indent=2, sort_keys=True)
-    print(file=f)
-PY
-  echo "Removed gnucash-myproject from $CLAUDE_CONFIG"
+# Remove mcpServers entry and LaunchAgent plist via the binary
+if [[ -f "$BINARY" ]]; then
+  "$BINARY" unregister
 else
-  echo "Claude Desktop config not found — skipping"
+  echo "Binary not found — skipping unregister"
 fi
 
-# Unload and remove LaunchAgent
-if [[ -f "$PLIST" ]]; then
-  launchctl unload "$PLIST" 2>/dev/null || true
-  rm "$PLIST"
-  echo "Removed $PLIST"
-else
-  echo "LaunchAgent not found — skipping"
-fi
+# Unload LaunchAgent (plist already removed by unregister)
+launchctl unload "$PLIST" 2>/dev/null || true
 
 # Remove binary and app directory
 if [[ -f "$BINARY" ]]; then

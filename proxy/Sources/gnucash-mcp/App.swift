@@ -7,7 +7,7 @@ struct GnuCashMCP: AsyncParsableCommand {
         commandName: "gnucash-mcp",
         abstract: "GnuCash MCP proxy — stdio transport for Claude Desktop",
         version: "\(buildCommit) (\(buildDate))",
-        subcommands: [Start.self, Stop.self, Status.self, Install.self, Snapshot.self],
+        subcommands: [Start.self, Stop.self, Status.self, Register.self, Unregister.self, Snapshot.self],
         defaultSubcommand: Start.self,
     )
 }
@@ -143,12 +143,12 @@ extension GnuCashMCP {
     }
 }
 
-// MARK: - install
+// MARK: - register
 
 extension GnuCashMCP {
-    struct Install: AsyncParsableCommand {
+    struct Register: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Write claude_desktop_config.json command entry and LaunchAgent plist",
+            abstract: "Register with Claude Desktop: write claude_desktop_config.json entry and LaunchAgent plist",
         )
 
         @Option(name: .long, help: "Path to gnucash-mcp binary (defaults to this executable)")
@@ -200,6 +200,52 @@ extension GnuCashMCP {
             try plistData.write(to: agentPath)
             print("Wrote: \(agentPath.path)")
             print("Restart Claude Desktop to pick up the new server.")
+        }
+    }
+}
+
+// MARK: - unregister
+
+extension GnuCashMCP {
+    struct Unregister: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Unregister from Claude Desktop: remove claude_desktop_config.json entry and LaunchAgent plist",
+        )
+
+        mutating func run() async throws {
+            let fm = FileManager.default
+
+            // claude_desktop_config.json
+            let configPath = URL.applicationSupportDirectory
+                .appending(component: "Claude")
+                .appending(component: "claude_desktop_config.json")
+            if let data = try? Data(contentsOf: configPath),
+               var config = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               var mcpServers = config["mcpServers"] as? [String: Any]
+            {
+                mcpServers.removeValue(forKey: "gnucash-myproject")
+                config["mcpServers"] = mcpServers
+                let updated = try JSONSerialization.data(
+                    withJSONObject: config, options: [.prettyPrinted, .sortedKeys],
+                )
+                try updated.write(to: configPath)
+                print("Removed entry from: \(configPath.path)")
+            } else {
+                print("No entry found in: \(configPath.path)")
+            }
+
+            // LaunchAgent plist
+            let agentPath = URL.libraryDirectory
+                .appending(component: "LaunchAgents")
+                .appending(component: "com.gnucash-mcp.myproject.plist")
+            if fm.fileExists(atPath: agentPath.path) {
+                try fm.removeItem(at: agentPath)
+                print("Removed: \(agentPath.path)")
+            } else {
+                print("Not found: \(agentPath.path)")
+            }
+
+            print("Restart Claude Desktop to apply changes.")
         }
     }
 }
