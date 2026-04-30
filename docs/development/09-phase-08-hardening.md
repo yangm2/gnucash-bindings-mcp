@@ -298,18 +298,14 @@ T8.5.6  10-step CoWork agentic task: only 1 cold start (first call), remaining 9
 
 ---
 
-### M8.7 — Replace `pgrep` singleton guard with lock file
+### M8.7 — Replace `pgrep` singleton guard with lock file ✅
 
-**Goal:** Remove the `Process()`/`pgrep -x gnucash-mcp` call in `App.swift` that
-detects duplicate proxy instances. A lock file is simpler, more portable (no
-dependency on `pgrep` being present), and works correctly under sandbox.
+**Implemented.** `SingletonLock.swift` acquires `flock(LOCK_EX | LOCK_NB)` on
+`$TMPDIR/gnucash-mcp.lock` at startup and writes the PID to the file.
+`gnucash-mcp stop` reads the PID from the lock file instead of shelling out to
+`pgrep`. `shellOutput()` helper removed from `App.swift` entirely.
 
-**Approach:**
-- On startup, open `$TMPDIR/gnucash-mcp.lock` (or `~/.local/share/gnucash-mcp/run.lock`)
-  and call `flock(fd, LOCK_EX | LOCK_NB)` via `Darwin.flock`
-- If the lock is held → another instance is running → exit with a clear error message
-- Hold the lock for the lifetime of the process (the fd is closed when the process exits)
-- Remove the `shellOutput()` helper in `App.swift` if this is its only caller
+**Lock file:** `URL.temporaryDirectory/gnucash-mcp.lock` (`$TMPDIR/gnucash-mcp.lock`)
 
 **Tests:**
 ```

@@ -23,6 +23,18 @@ extension GnuCashMCP {
         mutating func run() async throws {
             fputs("gnucash-mcp \(buildCommit) (\(buildDate)): start\n", stderr)
 
+            let lock: SingletonLock
+            do {
+                lock = try SingletonLock.acquire()
+            } catch SingletonLockError.alreadyRunning {
+                fputs("error: gnucash-mcp is already running\n", stderr)
+                Darwin.exit(1)
+            } catch {
+                fputs("error: could not acquire lock: \(error)\n", stderr)
+                Darwin.exit(1)
+            }
+            _ = lock // held for process lifetime
+
             fputs("gnucash-mcp: checking container system\n", stderr)
             do {
                 try ContainerSystem.ensureRunning()
@@ -104,8 +116,7 @@ extension GnuCashMCP {
         )
 
         mutating func run() async throws {
-            let result = shellOutput("pgrep", "-x", "gnucash-mcp")
-            guard let pid = Int32(result.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            guard let pid = SingletonLock.readPID() else {
                 print("gnucash-mcp is not running")
                 return
             }
@@ -198,7 +209,7 @@ extension GnuCashMCP {
 extension GnuCashMCP {
     struct Snapshot: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Create a manual cp -c backup of the live book",
+            abstract: "Create a manual APFS clone-copy backup of the live book",
         )
 
         mutating func run() async throws {
@@ -212,18 +223,4 @@ extension GnuCashMCP {
             try BackupManager.pruneBackups(bookURL: sparsebundle.bookURL, keepCount: 10)
         }
     }
-}
-
-// MARK: - helpers
-
-private func shellOutput(_ args: String...) -> String {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-    process.arguments = args
-    let pipe = Pipe()
-    process.standardOutput = pipe
-    process.standardError = FileHandle.nullDevice
-    try? process.run()
-    process.waitUntilExit()
-    return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
 }
