@@ -35,17 +35,23 @@ enum StaticResources {
         ),
     ]
 
-    static func content(for uri: String) -> String? {
+    /// Returns (mimeType, text) for known static URIs, nil for dynamic ones.
+    static func content(for uri: String) -> (String, String)? {
         switch uri {
-        case "gnucash://session-context": resource("session-context")
-        case "gnucash://book-setup-guide": resource("book-setup-guide")
-        case "gnucash://vendor-guide": resource("vendor-guide")
-        case "gnucash://expected-chart": resource("expected-chart")
-        default: nil
+        case "gnucash://session-context":
+            markdown("session-context").map { ("text/markdown", $0) }
+        case "gnucash://book-setup-guide":
+            markdown("book-setup-guide").map { ("text/markdown", $0) }
+        case "gnucash://vendor-guide":
+            markdown("vendor-guide").map { ("text/markdown", $0) }
+        case "gnucash://expected-chart":
+            markdown("expected-chart").map { ("text/markdown", $0) }
+        default:
+            nil
         }
     }
 
-    private static func resource(_ name: String) -> String? {
+    private static func markdown(_ name: String) -> String? {
         guard let url = Bundle.module.url(forResource: name, withExtension: "md"),
               let text = try? String(contentsOf: url, encoding: .utf8)
         else { return nil }

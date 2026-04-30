@@ -59,48 +59,31 @@ extension GnuCashMCP {
                 Darwin.exit(1)
             }
 
-            fputs("gnucash-mcp: attaching sparsebundle\n", stderr)
-            let sparsebundle = SparsebundleManager()
-            do {
-                try sparsebundle.attachIfNeeded()
-            } catch {
-                fputs("error: could not attach sparsebundle: \(error)\n", stderr)
-                Darwin.exit(1)
-            }
             let pool = ContainerPool { try await GnuCashContainerClient(backend: containerBackend) }
-            setupSignalHandlers(pool: pool, sparsebundle: sparsebundle)
+            let transport = MCPStdioTransport(pool: pool)
+            setupSignalHandlers(transport: transport)
 
             fputs("gnucash-mcp: entering stdio transport\n", stderr)
-            let transport = MCPStdioTransport(pool: pool, sparsebundle: sparsebundle)
             await transport.run()
             fputs("gnucash-mcp: transport exited\n", stderr)
         }
 
-        private func setupSignalHandlers(pool: ContainerPool, sparsebundle: SparsebundleManager) {
+        private func setupSignalHandlers(transport: MCPStdioTransport) {
             // Block default signal handling so DispatchSource takes over.
             signal(SIGTERM, SIG_IGN)
             signal(SIGINT, SIG_IGN)
-            let termSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
-            termSource.setEventHandler {
+            let handler: @Sendable (String) -> Void = { name in
                 Task {
-                    fputs("gnucash-mcp: received SIGTERM — draining pool\n", stderr)
-                    await pool.drain()
-                    fputs("gnucash-mcp: detaching sparsebundle\n", stderr)
-                    try? sparsebundle.detach()
+                    fputs("gnucash-mcp: received \(name) — shutting down\n", stderr)
+                    await transport.shutdown()
                     Darwin.exit(0)
                 }
             }
+            let termSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+            termSource.setEventHandler { handler("SIGTERM") }
             termSource.resume()
             let intSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
-            intSource.setEventHandler {
-                Task {
-                    fputs("gnucash-mcp: received SIGINT — draining pool\n", stderr)
-                    await pool.drain()
-                    fputs("gnucash-mcp: detaching sparsebundle\n", stderr)
-                    try? sparsebundle.detach()
-                    Darwin.exit(0)
-                }
-            }
+            intSource.setEventHandler { handler("SIGINT") }
             intSource.resume()
             _ = (termSource, intSource)
         }
@@ -135,7 +118,7 @@ extension GnuCashMCP {
         )
 
         mutating func run() async throws {
-            let sparsebundle = SparsebundleManager()
+            let sparsebundle = SparsebundleManager(bundlePath: SparsebundleManager.defaultBundlePath)
             print(
                 "Sparsebundle : \(sparsebundle.isMounted ? "mounted at \(sparsebundle.mountPoint)" : "not mounted")",
             )
@@ -259,7 +242,7 @@ extension GnuCashMCP {
         )
 
         mutating func run() async throws {
-            let sparsebundle = SparsebundleManager()
+            let sparsebundle = SparsebundleManager(bundlePath: SparsebundleManager.defaultBundlePath)
             guard sparsebundle.isMounted else {
                 fputs("error: sparsebundle not mounted at \(sparsebundle.mountPoint)\n", stderr)
                 Darwin.exit(1)

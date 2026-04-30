@@ -3,10 +3,20 @@ import Foundation
 /// Reads newline-delimited JSON-RPC from stdin, dispatches each message, writes
 /// responses to stdout. Static methods (initialize, tools/list, resources/*) are
 /// answered without touching the container. All other methods go to the pool.
+///
+/// Roots protocol: after the client sends notifications/initialized, this server
+/// sends roots/list to discover the sparsebundle path configured in Claude Desktop's
+/// Extensions settings. Tool calls that arrive before the sparsebundle is attached
+/// wait on a continuation until it is ready.
 actor MCPStdioTransport {
     private let pool: ContainerPool
-    private let sparsebundle: SparsebundleManager
+    private var sparsebundle: SparsebundleManager?
     private var backupDone = false
+
+    // Roots protocol state
+    private static let rootsRequestId = 1001
+    private var rootsRequested = false
+    private var sparsebundleWaiters: [CheckedContinuation<SparsebundleManager, Error>] = []
 
     private let encoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -16,9 +26,8 @@ actor MCPStdioTransport {
 
     private let decoder = JSONDecoder()
 
-    init(pool: ContainerPool, sparsebundle: SparsebundleManager) {
+    init(pool: ContainerPool) {
         self.pool = pool
-        self.sparsebundle = sparsebundle
     }
 
     func run() async {
@@ -28,39 +37,41 @@ actor MCPStdioTransport {
                 guard !trimmed.isEmpty else { continue }
                 guard let data = trimmed.data(using: .utf8) else { continue }
 
-                let response: JSONRPCResponse?
-                do {
-                    let request = try decoder.decode(JSONRPCRequest.self, from: data)
-                    response = try await dispatch(request)
-                } catch {
-                    response = .failure(id: nil, code: -32700, message: "Parse error: \(error)")
-                }
-
-                guard let response else { continue } // notifications produce no response
-                if let out = try? encoder.encode(response),
-                   let str = String(data: out, encoding: .utf8)
-                {
-                    print(str)
-                    fflush(stdout)
+                // Incoming messages are either client requests or client responses
+                // to our server-initiated roots/list request.
+                if let request = try? decoder.decode(JSONRPCRequest.self, from: data) {
+                    let response: JSONRPCResponse?
+                    do {
+                        response = try await dispatch(request)
+                    } catch {
+                        response = .failure(id: request.id, code: -32603, message: "\(error)")
+                    }
+                    if let response { write(response) }
+                } else if let response = try? decoder.decode(JSONRPCResponse.self, from: data) {
+                    await handleClientResponse(response)
+                } else {
+                    write(.failure(id: nil, code: -32700, message: "Parse error"))
                 }
             }
         } catch {
-            fputs("gnucash-mcp: stdin read error: \(error) — draining pool\n", stderr)
+            fputs("gnucash-mcp: stdin read error: \(error)\n", stderr)
         }
-        // stdin closed (EOF) or read error — drain pool before detaching sparsebundle.
-        // pool.drain() awaits container termination, guaranteeing no open file handles
-        // remain on the sparsebundle volume before detach() is called.
         fputs("gnucash-mcp: stdin EOF — draining pool\n", stderr)
+        await shutdown()
+    }
+
+    /// Called by signal handlers to cleanly drain the pool and detach the sparsebundle.
+    func shutdown() async {
         await pool.drain()
         fputs("gnucash-mcp: detaching sparsebundle\n", stderr)
-        try? sparsebundle.detach()
+        try? sparsebundle?.detach()
     }
 
     // MARK: - Dispatch
 
     private func dispatch(_ request: JSONRPCRequest) async throws -> JSONRPCResponse? {
-        // Notifications (no id, or method starting with "notifications/") never get a response.
         if request.method.hasPrefix("notifications/") {
+            await handleNotification(request)
             return nil
         }
 
@@ -76,13 +87,12 @@ actor MCPStdioTransport {
 
         case "resources/read":
             let uri = request.params?.objectValue?["uri"]?.stringValue
-            if let uri, let text = StaticResources.content(for: uri) {
-                return try .success(
+            if let uri, let (mimeType, text) = StaticResources.content(for: uri) {
+                return .success(
                     id: request.id,
-                    result: resourceReadResult(uri: uri, text: text),
+                    result: resourceReadResult(uri: uri, mimeType: mimeType, text: text),
                 )
             }
-            // Fall through to container for dynamic resources (e.g. gnucash://vendors)
             return try await containerDispatch(request)
 
         default:
@@ -90,13 +100,90 @@ actor MCPStdioTransport {
         }
     }
 
+    private func handleNotification(_ request: JSONRPCRequest) async {
+        // roots/list_changed before the first tool call: re-request so the
+        // correct path is used when the first tool arrives.
+        if request.method == "notifications/roots/list_changed" {
+            if sparsebundle != nil {
+                fputs("gnucash-mcp: roots changed — restart Claude Desktop to apply\n", stderr)
+            } else {
+                rootsRequested = false // allow re-fetch
+            }
+        }
+    }
+
+    // MARK: - Roots protocol
+
+    private func sendRootsListRequest() {
+        let req: JSONValue = .object([
+            "jsonrpc": .string("2.0"),
+            "id": .int(Self.rootsRequestId),
+            "method": .string("roots/list"),
+            "params": .object([:]),
+        ])
+        if let data = try? encoder.encode(req), let str = String(data: data, encoding: .utf8) {
+            print(str)
+            fflush(stdout)
+        }
+    }
+
+    private func handleClientResponse(_ response: JSONRPCResponse) async {
+        guard response.id?.intValue == Self.rootsRequestId else { return }
+        let roots = response.result?.objectValue?["roots"]?.arrayValue ?? []
+        let path: String
+        if let uri = roots.first?.objectValue?["uri"]?.stringValue,
+           let url = URL(string: uri), url.isFileURL
+        {
+            path = url.path
+        } else {
+            fputs("gnucash-mcp: roots/list returned no file URI — using default path\n", stderr)
+            path = SparsebundleManager.defaultBundlePath
+        }
+        await attachSparsebundle(path: path)
+    }
+
+    private func attachSparsebundle(path: String) async {
+        let sb = SparsebundleManager(bundlePath: path)
+        do {
+            try sb.attachIfNeeded()
+            sparsebundle = sb
+            let waiters = sparsebundleWaiters
+            sparsebundleWaiters = []
+            for cont in waiters {
+                cont.resume(returning: sb)
+            }
+        } catch {
+            fputs("error: could not attach sparsebundle: \(error)\n", stderr)
+            let waiters = sparsebundleWaiters
+            sparsebundleWaiters = []
+            for cont in waiters {
+                cont.resume(throwing: error)
+            }
+            Darwin.exit(1)
+        }
+    }
+
+    /// Returns the sparsebundle, attaching it if necessary. On the first call,
+    /// sends roots/list to the client and suspends until the response arrives.
+    private func acquireSparsebundle() async throws -> SparsebundleManager {
+        if let sb = sparsebundle { return sb }
+        return try await withCheckedThrowingContinuation { cont in
+            sparsebundleWaiters.append(cont)
+            if !rootsRequested {
+                rootsRequested = true
+                sendRootsListRequest()
+            }
+        }
+    }
+
     // MARK: - Container dispatch
 
     private func containerDispatch(_ request: JSONRPCRequest) async throws -> JSONRPCResponse {
-        // Create backup before the first write call in this session.
+        let sb = try await acquireSparsebundle()
+
         if !backupDone, isWriteMethod(request.method) {
-            if let backup = try? BackupManager.createBackup(bookURL: sparsebundle.bookURL) {
-                try? BackupManager.pruneBackups(bookURL: sparsebundle.bookURL, keepCount: 10)
+            if let backup = try? BackupManager.createBackup(bookURL: sb.bookURL) {
+                try? BackupManager.pruneBackups(bookURL: sb.bookURL, keepCount: 10)
                 _ = backup
             }
             backupDone = true
@@ -112,6 +199,15 @@ actor MCPStdioTransport {
 
     private func isWriteMethod(_ method: String) -> Bool {
         method == "tools/call"
+    }
+
+    // MARK: - Output
+
+    private func write(_ response: JSONRPCResponse) {
+        if let data = try? encoder.encode(response), let str = String(data: data, encoding: .utf8) {
+            print(str)
+            fflush(stdout)
+        }
     }
 
     // MARK: - Static response builders
@@ -142,12 +238,12 @@ actor MCPStdioTransport {
         return .object(["resources": resources])
     }
 
-    private func resourceReadResult(uri: String, text: String) throws -> JSONValue {
+    private func resourceReadResult(uri: String, mimeType: String, text: String) -> JSONValue {
         .object([
             "contents": .array([
                 .object([
                     "uri": .string(uri),
-                    "mimeType": .string("text/markdown"),
+                    "mimeType": .string(mimeType),
                     "text": .string(text),
                 ]),
             ]),

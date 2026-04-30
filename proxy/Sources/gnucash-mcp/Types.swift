@@ -49,6 +49,16 @@ extension JSONValue {
         return nil
     }
 
+    var intValue: Int? {
+        if case let .int(i) = self { return i }
+        return nil
+    }
+
+    var arrayValue: [JSONValue]? {
+        if case let .array(a) = self { return a }
+        return nil
+    }
+
     var objectValue: [String: JSONValue]? {
         if case let .object(d) = self { return d }
         return nil

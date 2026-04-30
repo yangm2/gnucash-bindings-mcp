@@ -135,32 +135,32 @@ struct MCPTransportTests {
     func `T5.2.4 resources/read book-setup-guide returns markdown content`() {
         let content = StaticResources.content(for: "gnucash://book-setup-guide")
         #expect(content != nil)
-        #expect(content?.contains("book_add_account") == true)
-        #expect(content?.contains("MC-6") == true)
+        #expect(content?.1.contains("book_add_account") == true)
+        #expect(content?.1.contains("MC-6") == true)
     }
 
     @Test
     func `T5.2.4a resources/read session-context returns markdown content`() {
         let content = StaticResources.content(for: "gnucash://session-context")
         #expect(content != nil)
-        #expect(content?.contains("Tier 1") == true)
-        #expect(content?.contains("receive_invoice") == true)
+        #expect(content?.1.contains("Tier 1") == true)
+        #expect(content?.1.contains("receive_invoice") == true)
     }
 
     @Test
     func `resources/read vendor-guide returns markdown content`() {
         let content = StaticResources.content(for: "gnucash://vendor-guide")
         #expect(content != nil)
-        #expect(content?.contains("vendor_add") == true)
-        #expect(content?.contains("expense_category") == true)
+        #expect(content?.1.contains("vendor_add") == true)
+        #expect(content?.1.contains("expense_category") == true)
     }
 
     @Test
     func `resources/read expected-chart returns markdown content`() {
         let content = StaticResources.content(for: "gnucash://expected-chart")
         #expect(content != nil)
-        #expect(content?.contains("MC-6") == true)
-        #expect(content?.contains("Liabilities") == true)
+        #expect(content?.1.contains("MC-6") == true)
+        #expect(content?.1.contains("Liabilities") == true)
     }
 
     @Test

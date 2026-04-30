@@ -18,10 +18,11 @@ struct SparsebundleManager {
     let bundlePath: String
     let mountPoint: String
 
-    init(
-        bundlePath: String = URL.documentsDirectory.appending(component: "gnucash-mcp--project.sparsebundle").path,
-        mountPoint: String = "/Volumes/GnuCash-Project",
-    ) {
+    /// Fallback when the MCP client does not support the roots protocol.
+    static let defaultBundlePath =
+        URL.homeDirectory.appending(components: "books", "project.sparsebundle").path
+
+    init(bundlePath: String, mountPoint: String = "/Volumes/GnuCash-Project") {
         self.bundlePath = bundlePath
         self.mountPoint = mountPoint
     }
