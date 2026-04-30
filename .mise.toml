@@ -223,7 +223,7 @@ container run --rm \
 description = "Format Swift code"
 run = """
 SANDBOX_FLAG=${CLAUDECODE:- --verbose}
-swiftformat $SANDBOX_FLAG ${PROXY_DIR}
+swiftformat $SANDBOX_FLAG ${PROXY_DIR}/Sources ${PROXY_DIR}/Tests
 """
 
 [tasks.swiftlint]
@@ -231,7 +231,7 @@ description = "Lint Swift code"
 depends = ["swiftfmt"]
 run = """
 SANDBOX_FLAG=${CLAUDECODE:- --fix}
-swiftlint lint $SANDBOX_FLAG ${PROXY_DIR}
+swiftlint lint $SANDBOX_FLAG ${PROXY_DIR}/Sources ${PROXY_DIR}/Tests
 """
 
 [tasks.swift-test]

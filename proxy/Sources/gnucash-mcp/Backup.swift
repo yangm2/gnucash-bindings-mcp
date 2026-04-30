@@ -1,11 +1,11 @@
 import Foundation
 
 enum BackupError: Error, CustomStringConvertible {
-    case copyFailed(Int32)
+    case copyFailed(Error)
 
     var description: String {
         switch self {
-        case let .copyFailed(status): "cp -c exited with status \(status)"
+        case let .copyFailed(error): "backup copy failed: \(error)"
         }
     }
 }
@@ -26,14 +26,10 @@ enum BackupManager {
         let backupName = "\(bookURL.lastPathComponent).pre-\(timestamp).gnucash"
         let backupURL = bookURL.deletingLastPathComponent().appending(component: backupName)
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/cp")
-        process.arguments = ["-c", bookURL.path, backupURL.path]
-        try process.run()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else {
-            throw BackupError.copyFailed(process.terminationStatus)
+        do {
+            try FileManager.default.copyItem(at: bookURL, to: backupURL)
+        } catch {
+            throw BackupError.copyFailed(error)
         }
         return backupURL
     }

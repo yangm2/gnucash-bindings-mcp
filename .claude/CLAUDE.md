@@ -26,7 +26,7 @@ primary read-write interface; the macOS GnuCash GUI is read-only.
 | Container | Ubuntu 26.04, `python3-gnucash` (GnuCash 5.14) from universe |
 | Python worker | One-shot stdin→stdout JSON-RPC dispatcher; no HTTP server |
 | WAL | Append-only JSONL (`mcp-wal.jsonl`) for crash recovery |
-| Backup | `cp -c` APFS clone-copy (~51ms) before each write session |
+| Backup | `FileManager.copyItem` APFS clone-copy (~51ms) before each write session |
 
 **Two components under active development:**
 
