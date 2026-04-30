@@ -251,10 +251,7 @@ def test_post_transaction_rejects_imbalanced_splits(amounts_list):
     """For any list of positive amounts (which cannot sum to zero):
     post_transaction raises SplitsImbalanceError before touching the book.
     No fresh book needed — the check fires before the session opens."""
-    splits = [
-        {"account_path": "Assets:Project Checking", "amount": str(a)}
-        for a in amounts_list
-    ]
+    splits = [{"account_path": "Assets:Project Checking", "amount": str(a)} for a in amounts_list]
     with pytest.raises(SplitsImbalanceError):
         post_transaction(TEST_DATE, "Imbalanced", splits)
 
@@ -297,10 +294,9 @@ def test_post_transaction_multi_split_sums_to_zero(amounts_list):
     splits produces a transaction whose splits sum to exactly zero."""
     with _fresh_book():
         total = sum(amounts_list)
-        splits = (
-            [{"account_path": EXPENSE_ACCT, "amount": str(a)} for a in amounts_list]
-            + [{"account_path": AP_ACCT, "amount": str(-total)}]
-        )
+        splits = [{"account_path": EXPENSE_ACCT, "amount": str(a)} for a in amounts_list] + [
+            {"account_path": AP_ACCT, "amount": str(-total)}
+        ]
         result = post_transaction(TEST_DATE, "Multi-split", splits)
 
         txn = get_transaction(result["transaction_guid"])

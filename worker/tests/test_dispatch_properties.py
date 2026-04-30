@@ -35,13 +35,9 @@ req_ids = st.one_of(st.integers(), st.text(max_size=16), st.none())
 
 known_tool_names = st.sampled_from(sorted(HANDLERS.keys()))
 
-unknown_tool_names = st.text(min_size=1, max_size=32).filter(
-    lambda n: n not in HANDLERS
-)
+unknown_tool_names = st.text(min_size=1, max_size=32).filter(lambda n: n not in HANDLERS)
 
-arbitrary_arguments = st.dictionaries(
-    st.text(max_size=16), json_values, max_size=6
-)
+arbitrary_arguments = st.dictionaries(st.text(max_size=16), json_values, max_size=6)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
