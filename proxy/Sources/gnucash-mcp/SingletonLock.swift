@@ -1,6 +1,6 @@
 import Foundation
 
-enum SingletonLockError: Error, CustomStringConvertible {
+enum SingletonLockError: Error, CustomStringConvertible, Equatable {
     case alreadyRunning
     case openFailed(Int32)
 
@@ -16,15 +16,21 @@ enum SingletonLockError: Error, CustomStringConvertible {
 ///
 /// Acquiring writes the current PID to the lock file so `gnucash-mcp stop`
 /// can find the process without shelling out to pgrep.
-/// The lock is released automatically when the process exits (fd close-on-exit).
-struct SingletonLock {
+/// The lock and fd are released automatically when this object is deallocated.
+final class SingletonLock {
     static let lockURL = URL.temporaryDirectory.appending(component: "gnucash-mcp.lock")
 
     private let fd: Int32
 
-    /// Acquire the lock. Throws `SingletonLockError.alreadyRunning` if another
-    /// instance holds it.
-    static func acquire() throws -> SingletonLock {
+    private init(fd: Int32) {
+        self.fd = fd
+    }
+
+    deinit { close(fd) }
+
+    /// Acquire the lock at `url` (defaults to the production lock file).
+    /// Throws `SingletonLockError.alreadyRunning` if another instance holds it.
+    static func acquire(lockURL: URL = SingletonLock.lockURL) throws -> SingletonLock {
         let fd = open(lockURL.path, O_CREAT | O_RDWR, 0o644)
         guard fd >= 0 else { throw SingletonLockError.openFailed(errno) }
 
@@ -41,8 +47,8 @@ struct SingletonLock {
         return SingletonLock(fd: fd)
     }
 
-    /// Read the PID written by the running instance, if any.
-    static func readPID() -> pid_t? {
+    /// Read the PID written by the running instance from `url`.
+    static func readPID(lockURL: URL = SingletonLock.lockURL) -> pid_t? {
         guard let data = try? Data(contentsOf: lockURL),
               let str = String(data: data, encoding: .utf8),
               let pid = pid_t(str.trimmingCharacters(in: .whitespacesAndNewlines))
