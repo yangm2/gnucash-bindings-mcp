@@ -22,7 +22,7 @@ as a read-only inspection GUI.
 | Python dispatcher | One-shot stdin→stdout JSON-RPC handler | No FastMCP/uvicorn; pure dispatch |
 | Volume mount | APFS sparsebundle managed by Swift proxy | `hdiutil` via `Process`; mount before first call |
 | Write-ahead log | Append-only JSONL | Crash recovery / replay |
-| Snapshot management | `cp -c` APFS clone-copy | Pre-session backup; ~50ms regardless of book size |
+| Snapshot management | `FileManager.copyItem` APFS clone-copy | Pre-session backup; ~50ms regardless of book size |
 | GUI | macOS GnuCash 5.15 | Read-only via `-readonly` mount |
 | GUI wrapper | zsh (`gnucash-browse`) | Read-only mount + wait on GnuCash PID |
 
@@ -103,8 +103,8 @@ responses from stdout. The proxy handles the stdio↔container bridge internally
 {
   "mcpServers": {
     "gnucash-myproject": {
-      "command": "/usr/local/bin/gnucash-mcp",
-      "args": ["--stdio"]
+      "command": "/Users/<you>/Library/Application Support/gnucash-mcp/gnucash-mcp",
+      "args": ["start"]
     }
   }
 }
@@ -234,15 +234,16 @@ This separation keeps the original contract budget clean while making ECO costs
 visible independently and in aggregate.
 
 ### MC-7: Pre-session backup mechanism
-**Decision:** `cp -c` APFS clone-copy before each write session. Naming:
-`{book}.pre-YYYYMMDD-HHMMSS.gnucash`. Keep last 10; prune older on session start.
-GnuCash auto-backups (`.YYYYMMDDHHMMSS.gnucash`) retained per GnuCash default (30 days).
+**Decision:** APFS clone-copy via `FileManager.copyItem(at:to:)` before each write
+session. Naming: `{book}.pre-YYYYMMDD-HHMMSS.gnucash`. Keep last 10; prune older
+on session start. GnuCash auto-backups (`.YYYYMMDDHHMMSS.gnucash`) retained per
+GnuCash default (30 days).
 **Rationale (updated after Spike E):** `tmutil localsnapshot` creates snapshots on
 the sparsebundle volume but `diskutil apfs listSnapshots` cannot enumerate them —
-the snapshots are not mountable or restorable via standard tools. `cp -c` uses
-APFS copy-on-write and completes in ~51ms regardless of book file size. The copy
-is a fully independent file that can be opened directly in GnuCash for recovery,
-with no snapshot mounting required.
+the snapshots are not mountable or restorable via standard tools. `FileManager.copyItem`
+uses APFS copy-on-write (confirmed in Apple developer documentation) and completes
+in ~51ms regardless of book file size. The copy is a fully independent file that
+can be opened directly in GnuCash for recovery, with no snapshot mounting required.
 
 ---
 
@@ -366,7 +367,7 @@ the Swift layer receives protocol requests and dispatches containers via
 - Container pool management (size 1, 5s TTL)
 - Per-request container dispatch for tool calls and dynamic resources
 - SIGTERM / SIGINT handling → drain pool → detach sparsebundle → exit
-- Pre-session `cp -c` clone-copy backup (via `Process`; ~51ms)
+- Pre-session `FileManager.copyItem` APFS clone-copy backup (~51ms)
 
 **Python container owns:**
 - GnuCash session lifecycle (open, write, save, end — MC-2)

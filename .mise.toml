@@ -41,7 +41,7 @@ description = "One-time setup: build images, init book, create sparsebundle, ins
 depends = ["create-book-volume", "install-app"]
 
 [tasks.create-book-volume]
-description = "Create ~/books/project.sparsebundle and migrate book into it (one-time)"
+description = "Create ~/Documents/gnucash-mcp--project.sparsebundle and migrate book into it (one-time)"
 depends = ["init-book"]
 run = "{{config_root}}/bin/create-book-volume.zsh"
 
@@ -65,10 +65,11 @@ cd ${PROXY_DIR} && \
 description = "Remove gnucash-mcp binary, LaunchAgent plist, and Claude Desktop registration"
 run = """
 set -euo pipefail
-INSTALL_DIR="$HOME/.local/bin"
+APPDIR="$HOME/Library/Application Support/gnucash-mcp"
+BROWSE_DIR="$HOME/.local/bin"
 CLAUDE_CONFIG="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
 PLIST="$HOME/Library/LaunchAgents/com.gnucash-mcp.myproject.plist"
-BINARY="${INSTALL_DIR}/gnucash-mcp"
+BINARY="${APPDIR}/gnucash-mcp"
 
 # Remove mcpServers entry from Claude Desktop config
 if [[ -f "$CLAUDE_CONFIG" ]]; then
@@ -96,16 +97,17 @@ else
   echo "LaunchAgent not found — skipping"
 fi
 
-# Remove binary
+# Remove binary and app directory
 if [[ -f "$BINARY" ]]; then
   rm "$BINARY"
   echo "Removed $BINARY"
 else
   echo "Binary not found — skipping"
 fi
+rmdir "$APPDIR" 2>/dev/null || true
 
 # Remove gnucash-browse
-BROWSE="${INSTALL_DIR}/gnucash-browse"
+BROWSE="${BROWSE_DIR}/gnucash-browse"
 if [[ -f "$BROWSE" ]]; then
   rm "$BROWSE"
   echo "Removed $BROWSE"
@@ -122,41 +124,24 @@ description = "Build and install gnucash-mcp binary, then register with Claude D
 depends = ["build-proxy", "build"]
 run = """
 set -euo pipefail
-INSTALL_DIR="$HOME/.local/bin"
-mkdir -p "${INSTALL_DIR}"
+APPDIR="$HOME/Library/Application Support/gnucash-mcp"
+BROWSE_DIR="$HOME/.local/bin"
+mkdir -p "${APPDIR}" "${BROWSE_DIR}"
 
-echo "Installing to ${INSTALL_DIR}/gnucash-mcp…"
-cp "$TMPDIR/gnucash-mcp-build/release/gnucash-mcp" "${INSTALL_DIR}/gnucash-mcp"
-chmod +x "${INSTALL_DIR}/gnucash-mcp"
+echo "Installing to ${APPDIR}/gnucash-mcp…"
+cp "$TMPDIR/gnucash-mcp-build/release/gnucash-mcp" "${APPDIR}/gnucash-mcp"
+chmod +x "${APPDIR}/gnucash-mcp"
 
-echo "Installing to ${INSTALL_DIR}/gnucash-browse…"
-cp "$(git rev-parse --show-toplevel)/bin/gnucash-browse" "${INSTALL_DIR}/gnucash-browse"
-chmod +x "${INSTALL_DIR}/gnucash-browse"
+echo "Installing to ${BROWSE_DIR}/gnucash-browse…"
+cp "$(git rev-parse --show-toplevel)/bin/gnucash-browse" "${BROWSE_DIR}/gnucash-browse"
+chmod +x "${BROWSE_DIR}/gnucash-browse"
 
 echo "Registering with Claude Desktop…"
-CLAUDE_CONFIG="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
-mkdir -p "$HOME/Library/Application Support/Claude"
-python3 - "${INSTALL_DIR}/gnucash-mcp" "$CLAUDE_CONFIG" <<'PY'
-import json, sys
-binary, path = sys.argv[1], sys.argv[2]
-try:
-    with open(path) as f:
-        cfg = json.load(f)
-except FileNotFoundError:
-    cfg = {}
-cfg.setdefault("mcpServers", {})["gnucash-myproject"] = {
-    "command": binary,
-    "args": ["start"],
-}
-with open(path, "w") as f:
-    json.dump(cfg, f, indent=2, sort_keys=True)
-    print(file=f)
-print(f"Wrote: {path}")
-PY
+"${APPDIR}/gnucash-mcp" register --binary-path "${APPDIR}/gnucash-mcp"
 
 echo ""
 echo "Done. Restart Claude Desktop to pick up the new version."
-echo "Binary: ${INSTALL_DIR}/gnucash-mcp"
+echo "Binary: ${APPDIR}/gnucash-mcp"
 """
 
 # ── build ─────────────────────────────────────────────────────────────────────

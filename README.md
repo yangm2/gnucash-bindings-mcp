@@ -43,8 +43,8 @@ mise install-app
 ```
 
 Rebuilds the container image and Swift binary, installs the binary to
-`~/.local/bin`, and refreshes the Claude Desktop registration. Safe to re-run
-at any time. Restart Claude Desktop after any upgrade.
+`~/Library/Application Support/gnucash-mcp/`, and refreshes the Claude Desktop
+registration. Safe to re-run at any time. Restart Claude Desktop after any upgrade.
 
 **To uninstall:**
 
@@ -62,9 +62,9 @@ sparsebundle and book data are left untouched.
 |---|---|---|
 | `mise build` | Build container image `gnucash-mcp:latest` | Yes |
 | `mise init-book` | Create `.test-data/project.gnucash` | Yes |
-| `mise create-book-volume` | Create `~/books/project.sparsebundle`, migrate book | No — aborts if bundle exists |
+| `mise create-book-volume` | Create `~/Documents/gnucash-mcp--project.sparsebundle`, migrate book | No — aborts if bundle exists |
 | `mise build-proxy` | Build Swift binary (release) | Yes |
-| `mise install-app` | Install binary to `~/.local/bin`, register with Claude Desktop | Yes |
+| `mise install-app` | Install binary to `~/Library/Application Support/gnucash-mcp/`, register with Claude Desktop | Yes |
 | `mise uninstall-app` | Remove binary, plist, and Claude Desktop registration | Yes |
 
 ---
@@ -77,7 +77,7 @@ Claude Desktop launches `gnucash-mcp start` on connection. The proxy:
 
 1. Starts the container system if not running
 2. Verifies `gnucash-mcp:latest` container image exists
-3. Attaches `~/books/project.sparsebundle` read-write at `/Volumes/GnuCash-Project`
+3. Attaches `~/Documents/gnucash-mcp--project.sparsebundle` read-write at `/Volumes/GnuCash-Project`
 4. Pre-starts a warm container (blocks on stdin, ready for first tool call)
 5. Creates a `cp -c` APFS clone backup (~50ms) before the first write call in the session
 
@@ -100,7 +100,7 @@ gnucash-mcp status    # shows mount state and container pool state
 The MCP server must be stopped first (or not running).
 
 ```zsh
-bin/gnucash-browse                          # uses ~/books/project.sparsebundle
+bin/gnucash-browse                          # uses ~/Documents/gnucash-mcp--project.sparsebundle
 bin/gnucash-browse /path/to/other.sparsebundle
 ```
 
@@ -149,7 +149,7 @@ mise swift-test
 ### Restore from pre-session backup
 
 1. Stop the MCP server: `gnucash-mcp stop`
-2. Attach the volume read-write: `hdiutil attach ~/books/project.sparsebundle`
+2. Attach the volume read-write: `hdiutil attach ~/Documents/gnucash-mcp--project.sparsebundle`
 3. Identify the backup: `ls /Volumes/GnuCash-Project/project.pre-*.gnucash`
 4. Open the backup directly in GnuCash to verify the state you want
 5. Replace the live book:
@@ -198,7 +198,7 @@ gnucash-mcp <commit> (<date>): start
 gnucash-mcp: checking container system
 gnucash-mcp: checking image
 gnucash-mcp: attaching sparsebundle
-sparsebundle: attaching ~/books/project.sparsebundle
+sparsebundle: attaching ~/Documents/gnucash-mcp--project.sparsebundle
 sparsebundle: mounted at /Volumes/GnuCash-Project
 gnucash-mcp: entering stdio transport
 ```
@@ -206,7 +206,7 @@ gnucash-mcp: entering stdio transport
 To validate the proxy without Claude Desktop, drive it with JSON-RPC over stdin:
 
 ```zsh
-~/.local/bin/gnucash-mcp start <<'EOF'
+~/Library/Application\ Support/gnucash-mcp/gnucash-mcp start <<'EOF'
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"cli","version":"0"}}}
 {"jsonrpc":"2.0","method":"notifications/initialized"}
 {"jsonrpc":"2.0","id":2,"method":"tools/list"}

@@ -92,7 +92,7 @@ T8.3.3  Script runs to completion without hanging (max 30 second timeout)
   <string>com.youruser.gnucash-mcp</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/local/bin/gnucash-mcp</string>
+    <string>/Users/youruser/Library/Application Support/gnucash-mcp/gnucash-mcp</string>
     <string>start</string>
   </array>
   <key>RunAtLoad</key>
@@ -103,9 +103,9 @@ T8.3.3  Script runs to completion without hanging (max 30 second timeout)
     <false/>
   </dict>
   <key>StandardOutPath</key>
-  <string>/tmp/gnucash-mcp.log</string>
+  <string>/Users/youruser/Library/Logs/gnucash-mcp/gnucash-mcp.log</string>
   <key>StandardErrorPath</key>
-  <string>/tmp/gnucash-mcp-error.log</string>
+  <string>/Users/youruser/Library/Logs/gnucash-mcp/gnucash-mcp.err</string>
 </dict>
 </plist>
 ```

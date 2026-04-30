@@ -19,7 +19,7 @@ struct SparsebundleManager {
     let mountPoint: String
 
     init(
-        bundlePath: String = "\(NSHomeDirectory())/books/project.sparsebundle",
+        bundlePath: String = URL.documentsDirectory.appending(component: "gnucash-mcp--project.sparsebundle").path,
         mountPoint: String = "/Volumes/GnuCash-Project",
     ) {
         self.bundlePath = bundlePath

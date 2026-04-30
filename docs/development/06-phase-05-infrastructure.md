@@ -9,7 +9,7 @@ storage medium. The zsh wrappers handle the full lifecycle cleanly. Snapshots wo
 
 **Deliverables:**
 - `bin/create-book-volume.zsh` — one-time setup (runs on macOS host, not in container):
-  - Creates `~/books/project.sparsebundle` (100MB initial, APFS)
+  - Creates `~/Documents/gnucash-mcp--project.sparsebundle` (100MB initial, APFS)
   - Attaches read-write at `/Volumes/GnuCash-Project`
   - Moves Phase 1 `project.gnucash` into the volume
   - Verifies Python bindings can open the file via container `/data` path
@@ -17,7 +17,7 @@ storage medium. The zsh wrappers handle the full lifecycle cleanly. Snapshots wo
 
 **Tests:**
 ```
-T5.1.1  Script creates ~/books/project.sparsebundle
+T5.1.1  Script creates ~/Documents/gnucash-mcp--project.sparsebundle
 T5.1.2  Volume mounts at /Volumes/GnuCash-Project after script runs
 T5.1.3  project.gnucash present inside mounted volume
 T5.1.4  GnuCash Python bindings open the file via /data/project.gnucash in container
@@ -294,17 +294,21 @@ T5.3.8  GnuCash force-quit (Activity Monitor) → EXIT trap fires → sparsebund
 
 ---
 
-### M5.4 — Pre-session backup (cp -c clone-copy)
+### M5.4 — Pre-session backup (APFS clone-copy)
 
 **Background (Spike E result):** `tmutil localsnapshot` creates snapshots on the
 sparsebundle volume but `diskutil apfs listSnapshots` cannot enumerate them on
-non-boot volumes — they are not mountable or restorable. Use `cp -c` APFS
-clone-copy instead: completes in ~51ms, produces a fully independent `.gnucash`
-file that can be opened directly in GnuCash for recovery.
+non-boot volumes — they are not mountable or restorable. Use APFS clone-copy
+instead: completes in ~51ms, produces a fully independent `.gnucash` file that
+can be opened directly in GnuCash for recovery.
+
+**Implementation:** `FileManager.default.copyItem(at:to:)` — Apple's documentation
+confirms this automatically uses APFS copy-on-write cloning on the same volume,
+with fallback to a full copy on non-APFS volumes. No subprocess required.
 
 **Deliverables:**
 - `Backup.swift` in the Swift proxy — `BackupManager` struct:
-  - `createBackup(bookURL: URL) throws -> URL` — `cp -c` clone with timestamp suffix
+  - `createBackup(bookURL: URL) throws -> URL` — APFS clone with timestamp suffix
   - `pruneBackups(bookURL: URL, keepCount: Int) throws` — deletes oldest `.pre-*.gnucash` files
 - Pre-session backup integrated into Swift proxy `start` subcommand (MC-9):
   runs `createBackup` before first container dispatch of the session
@@ -485,7 +489,10 @@ synchronous liveness check.
 
 **`mise install-app` now also installs `bin/gnucash-browse`.**
 The script was in `bin/` but not copied to `~/.local/bin` by `install-app`, and
-not removed by `uninstall-app`. Fixed.
+not removed by `uninstall-app`. Fixed. `gnucash-mcp` binary installs to
+`~/Library/Application Support/gnucash-mcp/` (not on `$PATH`; launched by
+launchd/Claude Desktop); `gnucash-browse` installs to `~/.local/bin` (user-facing
+CLI, needs to be on `$PATH`).
 
 **ContainerSystem CLI calls retained at startup.**
 `ContainerSystem.ensureRunning()` still shells out to `container system status`

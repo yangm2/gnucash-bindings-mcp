@@ -65,7 +65,7 @@ gnucash-bindings-mcp/
 │   │       ├── ContainerPool.swift   ← size-1 TTL pool; sleep/wake recovery
 │   │       ├── ContainerDispatch.swift ← stdin/stdout round-trip to worker
 │   │       ├── VolumeMount.swift     ← hdiutil attach/detach
-│   │       ├── Backup.swift          ← cp -c pre-session clone-copy
+│   │       ├── Backup.swift          ← FileManager.copyItem pre-session APFS clone-copy
 │   │       ├── Metrics.swift         ← CallRecord + SessionSummary (M9.1)
 │   │       ├── MetricsCommand.swift  ← gnucash-mcp metrics subcommand
 │   │       └── JSONRPCTypes.swift    ← Codable MCP message types
@@ -121,7 +121,7 @@ Inside the sparsebundle (at `/Volumes/GnuCash-Project/` when mounted):
 project.gnucash
 project.gnucash.20250401120000.gnucash   (GnuCash auto-backup)
 project.gnucash.20250401120000.log
-project.gnucash.pre-20250401-120000.gnucash  (cp -c pre-session backup, M5.4)
+project.gnucash.pre-20250401-120000.gnucash  (APFS clone-copy pre-session backup, M5.4)
 project.wal.jsonl                            (write-ahead log)
 dispatch-timing.jsonl                        (per-call timing, Phase 9)
 ```

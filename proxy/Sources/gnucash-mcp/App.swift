@@ -148,15 +148,12 @@ extension GnuCashMCP {
             let resolvedBinary = (binary as NSString).standardizingPath
 
             // claude_desktop_config.json
-            let configDir =
-                "\(NSHomeDirectory())/Library/Application Support/Claude"
-            let configPath = "\(configDir)/claude_desktop_config.json"
-            try FileManager.default.createDirectory(
-                atPath: configDir, withIntermediateDirectories: true,
-            )
+            let configDir = URL.applicationSupportDirectory.appending(component: "Claude")
+            let configPath = configDir.appending(component: "claude_desktop_config.json")
+            try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
 
             var config: [String: Any] = [:]
-            if let data = FileManager.default.contents(atPath: configPath),
+            if let data = try? Data(contentsOf: configPath),
                let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             {
                 config = existing
@@ -170,27 +167,27 @@ extension GnuCashMCP {
             let configData = try JSONSerialization.data(
                 withJSONObject: config, options: [.prettyPrinted, .sortedKeys],
             )
-            try configData.write(to: URL(fileURLWithPath: configPath))
-            print("Wrote: \(configPath)")
+            try configData.write(to: configPath)
+            print("Wrote: \(configPath.path)")
 
             // LaunchAgent plist
-            let agentDir = "\(NSHomeDirectory())/Library/LaunchAgents"
-            let agentPath = "\(agentDir)/com.gnucash-mcp.myproject.plist"
-            try FileManager.default.createDirectory(
-                atPath: agentDir, withIntermediateDirectories: true,
-            )
+            let agentDir = URL.libraryDirectory.appending(component: "LaunchAgents")
+            let agentPath = agentDir.appending(component: "com.gnucash-mcp.myproject.plist")
+            try FileManager.default.createDirectory(at: agentDir, withIntermediateDirectories: true)
+            let logDir = URL.libraryDirectory.appending(components: "Logs", "gnucash-mcp")
+            try FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
             let plist: [String: Any] = [
                 "Label": "com.gnucash-mcp.myproject",
                 "ProgramArguments": [resolvedBinary, "start"],
                 "RunAtLoad": false,
-                "StandardOutPath": "/tmp/gnucash-mcp.log",
-                "StandardErrorPath": "/tmp/gnucash-mcp.err",
+                "StandardOutPath": logDir.appending(component: "gnucash-mcp.log").path,
+                "StandardErrorPath": logDir.appending(component: "gnucash-mcp.err").path,
             ]
             let plistData = try PropertyListSerialization.data(
                 fromPropertyList: plist, format: .xml, options: 0,
             )
-            try plistData.write(to: URL(fileURLWithPath: agentPath))
-            print("Wrote: \(agentPath)")
+            try plistData.write(to: agentPath)
+            print("Wrote: \(agentPath.path)")
             print("Restart Claude Desktop to pick up the new server.")
         }
     }

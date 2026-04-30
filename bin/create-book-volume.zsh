@@ -11,7 +11,7 @@ set -euo pipefail
 SCRIPT_DIR=${0:A:h}
 PROJECT_ROOT=${SCRIPT_DIR:h}
 
-BUNDLE="$HOME/books/project.sparsebundle"
+BUNDLE="$HOME/Documents/gnucash-mcp--project.sparsebundle"
 MOUNT="/Volumes/GnuCash-Project"
 SOURCE_BOOK=${1:-"$PROJECT_ROOT/.test-data/project.gnucash"}
 
@@ -36,9 +36,6 @@ if [[ ! -f "$SOURCE_BOOK" ]]; then
 fi
 
 # ── create and mount sparsebundle ─────────────────────────────────────────────
-
-print "Creating $HOME/books/ ..."
-mkdir -p "$HOME/books"
 
 print "Creating sparsebundle ..."
 hdiutil create -size 100m -fs APFS -volname "GnuCash-Project" "$BUNDLE"
