@@ -6,7 +6,7 @@ import XCTest
 
 // MARK: - Arbitrary JSONValue for property testing
 
-// Depth-limited generator to avoid infinite recursion on recursive cases.
+/// Depth-limited generator to avoid infinite recursion on recursive cases.
 private func jsonValueGen(depth: Int = 3) -> Gen<JSONValue> {
     let leaves: Gen<JSONValue> = Gen.one(of: [
         Gen.pure(.null),
@@ -32,7 +32,9 @@ private func jsonValueGen(depth: Int = 3) -> Gen<JSONValue> {
 }
 
 extension JSONValue: Arbitrary {
-    public static var arbitrary: Gen<JSONValue> { jsonValueGen() }
+    public static var arbitrary: Gen<JSONValue> {
+        jsonValueGen()
+    }
 }
 
 // MARK: - JSONValue roundtrip property
@@ -60,26 +62,28 @@ class JSONValueRoundtripProperty: XCTestCase {
 
 @Suite("JSONValue — accessors")
 struct JSONValueAccessorTests {
-    @Test("stringValue returns string for .string, nil otherwise",
-          arguments: [
-              (JSONValue.string("hello"), Optional("hello")),
-              (.int(1), nil),
-              (.bool(true), nil),
-              (.null, nil),
-              (.array([]), nil),
-              (.object([:]), nil),
-          ])
-    func stringValue(value: JSONValue, expected: String?) {
+    @Test(
+        arguments: [
+            (JSONValue.string("hello"), Optional("hello")),
+            (.int(1), nil),
+            (.bool(true), nil),
+            (.null, nil),
+            (.array([]), nil),
+            (.object([:]), nil),
+        ],
+    )
+    func `stringValue returns string for .string, nil otherwise`(value: JSONValue, expected: String?) {
         #expect(value.stringValue == expected)
     }
 
-    @Test("objectValue returns dict for .object, nil otherwise",
-          arguments: [
-              (JSONValue.object(["k": .int(1)]), true),
-              (.string("x"), false),
-              (.null, false),
-          ])
-    func objectValue(value: JSONValue, expectNonNil: Bool) {
+    @Test(
+        arguments: [
+            (JSONValue.object(["k": .int(1)]), true),
+            (.string("x"), false),
+            (.null, false),
+        ],
+    )
+    func `objectValue returns dict for .object, nil otherwise`(value: JSONValue, expectNonNil: Bool) {
         #expect((value.objectValue != nil) == expectNonNil)
     }
 }
@@ -90,31 +94,33 @@ struct JSONValueAccessorTests {
 struct JSONRPCRequestTests {
     private let decoder = JSONDecoder()
 
-    @Test("isNotification is true when id absent or explicit null",
-          arguments: [
-              // No id key at all
-              #"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
-              // Explicit null — decodeIfPresent returns nil, treated as notification
-              #"{"jsonrpc":"2.0","method":"tools/list","id":null}"#,
-          ])
-    func isNotificationTrue(json: String) throws {
+    @Test(
+        arguments: [
+            // No id key at all
+            #"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+            // Explicit null — decodeIfPresent returns nil, treated as notification
+            #"{"jsonrpc":"2.0","method":"tools/list","id":null}"#,
+        ],
+    )
+    func `isNotification is true when id absent or explicit null`(json: String) throws {
         let req = try decoder.decode(JSONRPCRequest.self, from: Data(json.utf8))
         #expect(req.isNotification)
     }
 
-    @Test("isNotification is false when id is a non-null value",
-          arguments: [
-              #"{"jsonrpc":"2.0","method":"tools/list","id":1}"#,
-              #"{"jsonrpc":"2.0","method":"tools/list","id":"abc"}"#,
-              #"{"jsonrpc":"2.0","method":"tools/list","id":0}"#,
-          ])
-    func isNotificationFalse(json: String) throws {
+    @Test(
+        arguments: [
+            #"{"jsonrpc":"2.0","method":"tools/list","id":1}"#,
+            #"{"jsonrpc":"2.0","method":"tools/list","id":"abc"}"#,
+            #"{"jsonrpc":"2.0","method":"tools/list","id":0}"#,
+        ],
+    )
+    func `isNotification is false when id is a non-null value`(json: String) throws {
         let req = try decoder.decode(JSONRPCRequest.self, from: Data(json.utf8))
         #expect(!req.isNotification)
     }
 
-    @Test("roundtrip preserves all fields")
-    func roundtrip() throws {
+    @Test
+    func `roundtrip preserves all fields`() throws {
         let json = #"{"jsonrpc":"2.0","method":"tools/call","id":42,"params":{"name":"list_accounts","arguments":{}}}"#
         let req = try decoder.decode(JSONRPCRequest.self, from: Data(json.utf8))
         #expect(req.jsonrpc == "2.0")
@@ -131,8 +137,8 @@ struct JSONRPCResponseTests {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    @Test("success encodes result, no error field")
-    func successEncoding() throws {
+    @Test
+    func `success encodes result, no error field`() throws {
         let resp = JSONRPCResponse.success(id: .int(1), result: .string("ok"))
         let data = try encoder.encode(resp)
         let decoded = try decoder.decode(JSONRPCResponse.self, from: data)
@@ -141,8 +147,8 @@ struct JSONRPCResponseTests {
         #expect(decoded.id == .int(1))
     }
 
-    @Test("failure encodes error, no result field")
-    func failureEncoding() throws {
+    @Test
+    func `failure encodes error, no result field`() throws {
         let resp = JSONRPCResponse.failure(id: .int(2), code: -32601, message: "Method not found")
         let data = try encoder.encode(resp)
         let decoded = try decoder.decode(JSONRPCResponse.self, from: data)
@@ -152,8 +158,8 @@ struct JSONRPCResponseTests {
         #expect(decoded.id == .int(2))
     }
 
-    @Test("failure with nil id (parse error case)")
-    func failureNilId() throws {
+    @Test
+    func `failure with nil id (parse error case)`() throws {
         let resp = JSONRPCResponse.failure(id: nil, code: -32700, message: "Parse error")
         let data = try encoder.encode(resp)
         let decoded = try decoder.decode(JSONRPCResponse.self, from: data)
@@ -161,14 +167,16 @@ struct JSONRPCResponseTests {
         #expect(decoded.error?.code == -32700)
     }
 
-    @Test("success/failure roundtrip preserves jsonrpc version field",
-          arguments: [
-              JSONRPCResponse.success(id: .int(1), result: .null),
-              JSONRPCResponse.failure(id: .int(1), code: -1, message: "err"),
-          ])
-    func jsonrpcField(resp: JSONRPCResponse) throws {
+    @Test(
+        arguments: [
+            JSONRPCResponse.success(id: .int(1), result: .null),
+            JSONRPCResponse.failure(id: .int(1), code: -1, message: "err"),
+        ],
+    )
+    func `success/failure roundtrip preserves jsonrpc version field`(resp: JSONRPCResponse) throws {
         let decoded = try decoder.decode(
-            JSONRPCResponse.self, from: try encoder.encode(resp))
+            JSONRPCResponse.self, from: encoder.encode(resp),
+        )
         #expect(decoded.jsonrpc == "2.0")
     }
 }

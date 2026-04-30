@@ -18,13 +18,13 @@ actor ContainerPool {
     private var warmSince: Date?
     private let ttl: TimeInterval
     private var reaperTask: Task<Void, Never>?
-    // Factory injected at init; production code passes GnuCashContainerClient,
-    // tests pass a mock. Async because container creation is async.
+    /// Factory injected at init; production code passes GnuCashContainerClient,
+    /// tests pass a mock. Async because container creation is async.
     private let factory: @Sendable () async throws -> any PooledContainer
 
     init(
         ttl: TimeInterval = 5,
-        factory: @escaping @Sendable () async throws -> any PooledContainer
+        factory: @escaping @Sendable () async throws -> any PooledContainer,
     ) {
         self.ttl = ttl
         self.factory = factory

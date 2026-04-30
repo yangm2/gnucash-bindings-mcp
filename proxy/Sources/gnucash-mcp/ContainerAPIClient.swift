@@ -1,5 +1,5 @@
-import ContainerAPIClient  // SDK: ContainerClient (XPC), ClientImage, ClientKernel, ClientProcess
-import ContainerResource   // SDK: ContainerConfiguration, ProcessConfiguration, etc.
+import ContainerAPIClient // SDK: ContainerClient (XPC), ClientImage, ClientKernel, ClientProcess
+import ContainerResource // SDK: ContainerConfiguration, ProcessConfiguration, etc.
 import Foundation
 
 // MARK: - Errors
@@ -26,6 +26,7 @@ enum ContainerError: Error, CustomStringConvertible {
 }
 
 // MARK: - Backend and process protocols
+
 //
 // These mirror the pattern from buck2-macos-local-reapi/ContainerBackend.swift:
 // thin protocols over the SDK types so ContainerPool tests can drive a mock
@@ -50,7 +51,7 @@ protocol ManagedContainerBackend: Sendable {
         id: String,
         stdin: FileHandle,
         stdout: FileHandle,
-        stderr: FileHandle
+        stderr: FileHandle,
     ) async throws -> any ManagedContainerProcess
     /// Force-deletes the container, stopping the VM if it is still running.
     /// Awaiting this method guarantees the VM has fully halted —
@@ -84,9 +85,17 @@ protocol PooledContainer: Sendable {
 private struct ClientProcessWrapper: ManagedContainerProcess {
     let wrapped: any ClientProcess
 
-    func start() async throws { try await wrapped.start() }
-    func wait() async throws -> Int32 { try await wrapped.wait() }
-    func kill(_ signal: Int32) async throws { try await wrapped.kill(signal) }
+    func start() async throws {
+        try await wrapped.start()
+    }
+
+    func wait() async throws -> Int32 {
+        try await wrapped.wait()
+    }
+
+    func kill(_ signal: Int32) async throws {
+        try await wrapped.kill(signal)
+    }
 }
 
 /// Production ManagedContainerBackend backed by com.apple.container.apiserver via XPC.
@@ -94,7 +103,7 @@ private struct ClientProcessWrapper: ManagedContainerProcess {
 actor LiveManagedContainerBackend: ManagedContainerBackend {
     private let client = ContainerClient()
 
-    func create(id: String, config: ContainerConfiguration) async throws {
+    func create(id _: String, config: ContainerConfiguration) async throws {
         let kernel = try await ClientKernel.getDefaultKernel(for: .current)
         try await client.create(configuration: config, options: .default, kernel: kernel)
     }
@@ -103,7 +112,7 @@ actor LiveManagedContainerBackend: ManagedContainerBackend {
         id: String,
         stdin: FileHandle,
         stdout: FileHandle,
-        stderr: FileHandle
+        stderr: FileHandle,
     ) async throws -> any ManagedContainerProcess {
         let proc = try await client.bootstrap(id: id, stdio: [stdin, stdout, stderr])
         return ClientProcessWrapper(wrapped: proc)
@@ -142,7 +151,7 @@ actor GnuCashContainerClient: PooledContainer {
     private let stdinPipe: Pipe
     private let stdoutPipe: Pipe
     private let stderrPipe: Pipe
-    // Set to false by a background task when the worker exits unexpectedly (KU-11).
+    /// Set to false by a background task when the worker exits unexpectedly (KU-11).
     private var _isAlive = true
 
     private static let imageName = "gnucash-mcp:latest"
@@ -166,22 +175,22 @@ actor GnuCashContainerClient: PooledContainer {
             executable: "/usr/bin/python3",
             arguments: ["-m", "gnucash_mcp"],
             environment: ["GNUCASH_BOOK_PATH=\(Self.bookPath)"],
-            workingDirectory: "/"
+            workingDirectory: "/",
         )
         var config = ContainerConfiguration(
             id: containerId,
             image: imageDesc.description,
-            process: processConfig
+            process: processConfig,
         )
         config.mounts = [.virtiofs(source: Self.dataMount, destination: "/data", options: [])]
-        config.networks = []  // no network access needed
+        config.networks = [] // no network access needed
 
         try await backend.create(id: containerId, config: config)
         let proc = try await backend.bootstrap(
             id: containerId,
             stdin: stdinP.fileHandleForReading,
             stdout: stdoutP.fileHandleForWriting,
-            stderr: stderrP.fileHandleForWriting
+            stderr: stderrP.fileHandleForWriting,
         )
         try await proc.start()
 
@@ -196,7 +205,7 @@ actor GnuCashContainerClient: PooledContainer {
         // Background sentinel: marks container dead if the worker exits before roundTrip.
         // This is the KU-11 sleep/wake guard — a woken-from-sleep container may have been
         // killed by the OS, and we want acquire() to discard it rather than deadlock.
-        let weakSelf = self  // actors don't support [weak self] directly; capture via nonisolated ref
+        let weakSelf = self // actors don't support [weak self] directly; capture via nonisolated ref
         Task.detached {
             _ = try? await weakSelf.process.wait()
             await weakSelf.markDead()
@@ -260,6 +269,7 @@ actor GnuCashContainerClient: PooledContainer {
 }
 
 // MARK: - Container system startup checks
+
 //
 // These use the CLI for now; the SDK equivalent is to call imageExists() on a
 // LiveManagedContainerBackend instance, which is done in App.swift at startup.
