@@ -4,6 +4,11 @@ import os
 import pytest
 from pathlib import Path
 from shutil import rmtree
+from hypothesis import settings
+
+# GnuCash I/O is variable; the 200ms default deadline causes spurious FlakyFailure.
+settings.register_profile("gnucash", deadline=None)
+settings.load_profile("gnucash")
 
 from gnucash_mcp.session import book_session, new_account, get_usd
 from gnucash_mcp import wal

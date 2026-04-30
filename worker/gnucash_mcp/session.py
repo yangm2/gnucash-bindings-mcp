@@ -16,7 +16,7 @@ Public API:
 """
 
 from contextlib import contextmanager
-from datetime import date as Date, datetime
+from datetime import date as Date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 import glob
 import os
@@ -45,12 +45,16 @@ def _purge_same_second_backup(path: Path) -> None:
     save.  When two saves occur within the same second the backup already exists
     and the save silently writes nothing.  Deleting it lets the save proceed.
     """
-    ts = datetime.now().strftime("%Y%m%d%H%M%S")
-    for f in glob.glob(f"{path}.{ts}.gnucash"):
-        try:
-            Path(f).unlink()
-        except OSError:
-            pass
+    # Purge current-second and previous-second backups: if this call straddles a
+    # second boundary (purge reads T-1, session.save() internally uses T), the
+    # backup from T would still block the save without the extra deletion.
+    now = datetime.now()
+    for ts in (now.strftime("%Y%m%d%H%M%S"), (now - timedelta(seconds=1)).strftime("%Y%m%d%H%M%S")):
+        for f in glob.glob(f"{path}.{ts}.gnucash"):
+            try:
+                Path(f).unlink()
+            except OSError:
+                pass
 
 
 def clear_stale_lock(path: Path) -> None:
