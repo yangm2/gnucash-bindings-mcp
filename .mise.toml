@@ -111,6 +111,61 @@ echo "Done. Restart Claude Desktop to pick up the new version."
 echo "Binary: ${APPDIR}/gnucash-mcp"
 """
 
+# ── buck2 ─────────────────────────────────────────────────────────────────────
+
+[tasks.fetch-buck-prelude]
+description = "Fetch the buck2 prelude matching the currently installed buck2 binary"
+run = """
+set -euo pipefail
+PRELUDE_DIR="${PROXY_DIR}/.buck/prelude"
+
+# Extract the commit hash embedded in `buck2 --version`
+# Format: "buck2 YYYY-MM-DD-<sha>"
+VERSION=$(buck2 --version)
+COMMIT=$(echo "$VERSION" | grep -oE '[0-9a-f]{40}$')
+if [[ -z "$COMMIT" ]]; then
+  echo "error: could not parse commit hash from: $VERSION" >&2
+  exit 1
+fi
+
+# Skip if already at this commit
+STAMP="${PROXY_DIR}/.buck/prelude.commit"
+if [[ -f "$STAMP" ]] && [[ "$(cat "$STAMP")" == "$COMMIT" ]]; then
+  echo "fetch-buck-prelude: prelude already at $COMMIT, skipping"
+  exit 0
+fi
+
+echo "fetch-buck-prelude: fetching prelude @ ${COMMIT:0:12} …"
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+# Set sparse-checkout to prelude/ before fetching so git only downloads
+# tree+blob objects for that subdirectory — one network round trip.
+git init "$WORK/buck2"
+git -C "$WORK/buck2" remote add origin https://github.com/facebook/buck2
+git -C "$WORK/buck2" sparse-checkout init --cone
+git -C "$WORK/buck2" sparse-checkout set prelude
+git -C "$WORK/buck2" \
+  -c protocol.version=2 \
+  fetch --depth=1 --filter=blob:none origin "$COMMIT"
+git -C "$WORK/buck2" checkout FETCH_HEAD
+
+rm -rf "$PRELUDE_DIR"
+mkdir -p "$(dirname "$PRELUDE_DIR")"
+mv "$WORK/buck2/prelude" "$PRELUDE_DIR"
+echo "$COMMIT" > "$STAMP"
+echo "fetch-buck-prelude: done ($(find "$PRELUDE_DIR" -name '*.bzl' | wc -l | tr -d ' ') bzl files)"
+"""
+
+[tasks.gen-buck]
+description = "Generate Buck2 BUCK files from the resolved SPM package graph"
+depends = ["fetch-buck-prelude"]
+run = """
+set -euo pipefail
+swift package resolve --package-path ${PROXY_DIR}
+python3 ${PROXY_DIR}/scripts/spm2buck.py
+"""
+
 # ── build ─────────────────────────────────────────────────────────────────────
 
 [tasks.build-worker]
@@ -124,6 +179,7 @@ run = "container build --pull --target dev -t gnucash-mcp:dev ${WORKER_DIR}"
 
 [tasks.build-proxy]
 description = "Build gnucash-mcp Swift binary (release)"
+depends = ["gen-buck"]
 run = """
 set -euo pipefail
 GIT_HASH=$(git -C {{config_root}} rev-parse --short HEAD 2>/dev/null || echo "dev")
@@ -208,6 +264,7 @@ swiftlint lint $SANDBOX_FLAG ${PROXY_DIR}/Sources ${PROXY_DIR}/Tests
 
 [tasks.test-proxy]
 description = "Run Swift proxy tests"
+depends = ["gen-buck"]
 usage = 'flag "--coverage" help="Collect and report line coverage after tests"'
 run = """
 SANDBOX_FLAG=${CLAUDECODE:+--disable-sandbox}
@@ -291,6 +348,16 @@ container run --rm -it \
 description = "Remove ephemeral test data"
 run = "rm -f ${DATA_DIR}/*.gnucash* ${DATA_DIR}/*.jsonl ${PROXY_DIR}/.build ${PROXY_DIR}/Version.swift"
 
+[tasks.purge-swift-cache]
+description = "Purge Swift module cache and compilation cache"
+run = """
+set -euo pipefail
+cd ${PROXY_DIR}
+swift package purge-cache
+rm -rf "$TMPDIR/gnucash-mcp-build"
+echo "Swift caches purged."
+"""
+
 [tasks.cleaner]
 description = "Clean all build artifacts and test data (images, volumes, etc.)"
-depends = ["delete-container-images", "clean"]
+depends = ["delete-container-images", "clean", "purge-swift-cache"]
