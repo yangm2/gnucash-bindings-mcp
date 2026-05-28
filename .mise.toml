@@ -155,11 +155,11 @@ flag "--code" help="Register with Claude Code instead of Claude Desktop"
 '''
 run = """
 set -euo pipefail
-ARGS=()
 if [[ "${usage_code:-false}" == "true" ]]; then
-  ARGS+=(--code)
+  BUILD_CONFIG=debug mise run install-app --code
+else
+  BUILD_CONFIG=debug mise run install-app
 fi
-BUILD_CONFIG=debug mise run install-app "${ARGS[@]}"
 """
 
 # ── buck2 ─────────────────────────────────────────────────────────────────────
