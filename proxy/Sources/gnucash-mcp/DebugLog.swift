@@ -1,5 +1,21 @@
 import Foundation
 
+nonisolated(unsafe) private let _logTSFormatter: ISO8601DateFormatter = {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return f
+}()
+
+private func _logTS() -> String { _logTSFormatter.string(from: Date()) }
+
+/// Stderr logger with ISO8601 timestamp prefix. Drop-in replacement for
+/// `fputs(msg, stderr)`. Always emits (release and debug); never writes to stdout.
+@inline(__always)
+func slog(_ message: String) {
+    fputs("\(_logTS()) \(message)", stderr)
+    fflush(stderr)
+}
+
 /// Debug-only stderr logger. Calls are stripped from release builds by `#if DEBUG`,
 /// and the @autoclosure message argument is never evaluated in release.
 ///
@@ -8,7 +24,7 @@ import Foundation
 @inline(__always)
 func dlog(_ subsystem: String, _ message: @autoclosure () -> String) {
     #if DEBUG
-    fputs("[debug] \(subsystem): \(message())\n", stderr)
+    fputs("\(_logTS()) [debug] \(subsystem): \(message())\n", stderr)
     fflush(stderr)
     #endif
 }

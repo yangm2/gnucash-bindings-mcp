@@ -30,13 +30,27 @@ final class SingletonLock {
 
     /// Acquire the lock at `url` (defaults to the production lock file).
     /// Throws `SingletonLockError.alreadyRunning` if another instance holds it.
+    ///
+    /// If the holder is an orphan (reparented to launchd, PID 1) it can no longer
+    /// serve any client — SIGKILL it and reclaim the lock once.
     static func acquire(lockURL: URL = SingletonLock.lockURL) throws -> SingletonLock {
         let fd = open(lockURL.path, O_CREAT | O_RDWR, 0o644)
         guard fd >= 0 else { throw SingletonLockError.openFailed(errno) }
 
-        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
-            close(fd)
-            throw SingletonLockError.alreadyRunning
+        if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            if let holderPID = readPID(lockURL: lockURL), parentPID(of: holderPID) == 1 {
+                slog("singleton: reclaiming orphan lock from PID \(holderPID)\n")
+                kill(holderPID, SIGKILL)
+                // Give the kernel a moment to release the holder's flock.
+                for _ in 0 ..< 20 {
+                    if flock(fd, LOCK_EX | LOCK_NB) == 0 { break }
+                    usleep(50_000) // 50ms × 20 = 1s max
+                }
+            }
+            if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+                close(fd)
+                throw SingletonLockError.alreadyRunning
+            }
         }
 
         // Truncate then write PID so stop can read it.
@@ -48,6 +62,19 @@ final class SingletonLock {
     }
 
     /// Read the PID written by the running instance from `url`.
+    /// Returns the parent PID of `pid`, or nil if the process doesn't exist.
+    /// Uses sysctl(KERN_PROC_PID); avoids shelling out to `ps`.
+    private static func parentPID(of pid: pid_t) -> pid_t? {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.size
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        let rc = mib.withUnsafeMutableBufferPointer { ptr in
+            sysctl(ptr.baseAddress, u_int(ptr.count), &info, &size, nil, 0)
+        }
+        guard rc == 0, size > 0, info.kp_proc.p_pid == pid else { return nil }
+        return info.kp_eproc.e_ppid
+    }
+
     static func readPID(lockURL: URL = SingletonLock.lockURL) -> pid_t? {
         guard let data = try? Data(contentsOf: lockURL),
               let str = String(data: data, encoding: .utf8),

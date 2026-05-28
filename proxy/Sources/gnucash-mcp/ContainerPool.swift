@@ -23,7 +23,7 @@ actor ContainerPool {
     private let factory: @Sendable () async throws -> any PooledContainer
 
     init(
-        ttl: TimeInterval = 5,
+        ttl: TimeInterval = 30,
         factory: @escaping @Sendable () async throws -> any PooledContainer,
     ) {
         self.ttl = ttl
@@ -36,21 +36,21 @@ actor ContainerPool {
     func acquire() async throws -> any PooledContainer {
         if let client = warm {
             if await client.isAlive {
-                fputs("pool: acquired warm container \(client.id)\n", stderr)
+                slog("pool: acquired warm container \(client.id)\n")
                 warm = nil
                 warmSince = nil
                 cancelReaper()
                 return client
             } else {
                 // Dead warm container (e.g. OS killed VM after sleep/wake).
-                fputs("pool: warm container \(client.id) is dead, discarding\n", stderr)
+                slog("pool: warm container \(client.id) is dead, discarding\n")
                 await client.terminate()
                 warm = nil
                 warmSince = nil
                 cancelReaper()
             }
         }
-        fputs("pool: cold start — no warm container\n", stderr)
+        slog("pool: cold start — no warm container\n")
         return try await factory()
     }
 
@@ -59,13 +59,13 @@ actor ContainerPool {
         Task {
             do {
                 let next = try await factory()
-                fputs("pool: pre-started warm container \(next.id)\n", stderr)
+                slog("pool: pre-started warm container \(next.id)\n")
                 warm = next
                 warmSince = Date()
                 armReaper()
             } catch {
                 // If pre-start fails, next acquire() starts on demand — not fatal.
-                fputs("pool: pre-start failed: \(error)\n", stderr)
+                slog("pool: pre-start failed: \(error)\n")
             }
         }
     }
@@ -75,11 +75,11 @@ actor ContainerPool {
     func drain() async {
         cancelReaper()
         if let client = warm {
-            fputs("pool: draining warm container \(client.id)\n", stderr)
+            slog("pool: draining warm container \(client.id)\n")
             await client.terminate()
-            fputs("pool: drained\n", stderr)
+            slog("pool: drained\n")
         } else {
-            fputs("pool: drain — no warm container\n", stderr)
+            slog("pool: drain — no warm container\n")
         }
         warm = nil
         warmSince = nil
@@ -114,10 +114,10 @@ actor ContainerPool {
               Date().timeIntervalSince(since) >= ttl,
               let client = warm
         else { return }
-        fputs("pool: TTL expired, reaping \(client.id)\n", stderr)
+        slog("pool: TTL expired, reaping \(client.id)\n")
         warm = nil
         warmSince = nil
         await client.terminate()
-        fputs("pool: reaped \(client.id)\n", stderr)
+        slog("pool: reaped \(client.id)\n")
     }
 }

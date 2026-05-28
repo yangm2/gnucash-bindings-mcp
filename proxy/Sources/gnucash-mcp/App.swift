@@ -21,41 +21,40 @@ extension GnuCashMCP {
         )
 
         mutating func run() async throws {
-            fputs("gnucash-mcp \(buildCommit) (\(buildDate)): start\n", stderr)
+            slog("gnucash-mcp \(buildCommit) (\(buildDate)): start\n")
 
             let lock: SingletonLock
             do {
                 lock = try SingletonLock.acquire()
             } catch SingletonLockError.alreadyRunning {
-                fputs("error: gnucash-mcp is already running\n", stderr)
+                slog("error: gnucash-mcp is already running\n")
                 Darwin.exit(1)
             } catch {
-                fputs("error: could not acquire lock: \(error)\n", stderr)
+                slog("error: could not acquire lock: \(error)\n")
                 Darwin.exit(1)
             }
             _ = lock // held for process lifetime
 
-            fputs("gnucash-mcp: checking container system\n", stderr)
+            slog("gnucash-mcp: checking container system\n")
             do {
                 try ContainerSystem.ensureRunning()
             } catch {
-                fputs("error: could not start container system: \(error)\n", stderr)
+                slog("error: could not start container system: \(error)\n")
                 Darwin.exit(1)
             }
 
-            fputs("gnucash-mcp: checking image\n", stderr)
+            slog("gnucash-mcp: checking image\n")
             let containerBackend = LiveManagedContainerBackend()
             do {
                 guard try await containerBackend.imageExists("gnucash-mcp:latest") else {
-                    fputs(
+                    slog(
                         "error: container image 'gnucash-mcp:latest' not found\n"
                             + "       Build it first: mise build\n",
-                        stderr,
                     )
                     Darwin.exit(1)
                 }
             } catch {
-                fputs("error: could not check container image: \(error)\n", stderr)
+                slog("error: could not check container image: \(error)\n")
                 Darwin.exit(1)
             }
 
@@ -63,9 +62,9 @@ extension GnuCashMCP {
             let transport = MCPStdioTransport(pool: pool)
             setupSignalHandlers(transport: transport)
 
-            fputs("gnucash-mcp: entering stdio transport\n", stderr)
+            slog("gnucash-mcp: entering stdio transport\n")
             await transport.run()
-            fputs("gnucash-mcp: transport exited\n", stderr)
+            slog("gnucash-mcp: transport exited\n")
         }
 
         private func setupSignalHandlers(transport: MCPStdioTransport) {
@@ -74,7 +73,7 @@ extension GnuCashMCP {
             signal(SIGINT, SIG_IGN)
             let handler: @Sendable (String) -> Void = { name in
                 Task {
-                    fputs("gnucash-mcp: received \(name) — shutting down\n", stderr)
+                    slog("gnucash-mcp: received \(name) — shutting down\n")
                     await transport.shutdown()
                     Darwin.exit(0)
                 }
@@ -244,7 +243,7 @@ extension GnuCashMCP {
         mutating func run() async throws {
             let sparsebundle = SparsebundleManager(bundlePath: SparsebundleManager.defaultBundlePath)
             guard sparsebundle.isMounted else {
-                fputs("error: sparsebundle not mounted at \(sparsebundle.mountPoint)\n", stderr)
+                slog("error: sparsebundle not mounted at \(sparsebundle.mountPoint)\n")
                 Darwin.exit(1)
             }
             let backup = try BackupManager.createBackup(bookURL: sparsebundle.bookURL)

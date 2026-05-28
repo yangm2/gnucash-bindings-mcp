@@ -15,7 +15,9 @@ actor MCPStdioTransport {
 
     // Roots protocol state
     private static let rootsRequestId = 1001
+    private static let rootsTimeout: TimeInterval = 2
     private var rootsRequested = false
+    private var clientSupportsRoots = false
     private var sparsebundleWaiters: [CheckedContinuation<SparsebundleManager, Error>] = []
 
     private let encoder: JSONEncoder = {
@@ -58,16 +60,16 @@ actor MCPStdioTransport {
                 }
             }
         } catch {
-            fputs("gnucash-mcp: stdin read error: \(error)\n", stderr)
+            slog("gnucash-mcp: stdin read error: \(error)\n")
         }
-        fputs("gnucash-mcp: stdin EOF — draining pool\n", stderr)
+        slog("gnucash-mcp: stdin EOF — draining pool\n")
         await shutdown()
     }
 
     /// Called by signal handlers to cleanly drain the pool and detach the sparsebundle.
     func shutdown() async {
         await pool.drain()
-        fputs("gnucash-mcp: detaching sparsebundle\n", stderr)
+        slog("gnucash-mcp: detaching sparsebundle\n")
         try? sparsebundle?.detach()
     }
 
@@ -81,6 +83,11 @@ actor MCPStdioTransport {
 
         switch request.method {
         case "initialize":
+            let caps = request.params?.objectValue?["capabilities"]?.objectValue
+            clientSupportsRoots = caps?["roots"] != nil
+            if !clientSupportsRoots {
+                slog("gnucash-mcp: client did not advertise roots capability — will use default sparsebundle path\n")
+            }
             return .success(id: request.id, result: initializeResult())
 
         case "tools/list":
@@ -109,7 +116,7 @@ actor MCPStdioTransport {
         // correct path is used when the first tool arrives.
         if request.method == "notifications/roots/list_changed" {
             if sparsebundle != nil {
-                fputs("gnucash-mcp: roots changed — restart Claude Desktop to apply\n", stderr)
+                slog("gnucash-mcp: roots changed — restart Claude Desktop to apply\n")
             } else {
                 rootsRequested = false // allow re-fetch
             }
@@ -140,7 +147,7 @@ actor MCPStdioTransport {
         {
             path = url.path
         } else {
-            fputs("gnucash-mcp: roots/list returned no file URI — using default path\n", stderr)
+            slog("gnucash-mcp: roots/list returned no file URI — using default path\n")
             path = SparsebundleManager.defaultBundlePath
         }
         await attachSparsebundle(path: path)
@@ -157,7 +164,7 @@ actor MCPStdioTransport {
                 cont.resume(returning: sb)
             }
         } catch {
-            fputs("error: could not attach sparsebundle: \(error)\n", stderr)
+            slog("error: could not attach sparsebundle: \(error)\n")
             let waiters = sparsebundleWaiters
             sparsebundleWaiters = []
             for cont in waiters {
@@ -169,15 +176,36 @@ actor MCPStdioTransport {
 
     /// Returns the sparsebundle, attaching it if necessary. On the first call,
     /// sends roots/list to the client and suspends until the response arrives.
+    /// If the client did not advertise the roots capability, skip roots/list and
+    /// attach the default path immediately. Otherwise, schedule a timeout that
+    /// falls back to the default path if no response arrives in time.
     private func acquireSparsebundle() async throws -> SparsebundleManager {
         if let sb = sparsebundle { return sb }
+        if !clientSupportsRoots {
+            await attachSparsebundle(path: SparsebundleManager.defaultBundlePath)
+            if let sb = sparsebundle { return sb }
+        }
         return try await withCheckedThrowingContinuation { cont in
             sparsebundleWaiters.append(cont)
             if !rootsRequested {
                 rootsRequested = true
                 sendRootsListRequest()
+                scheduleRootsTimeout()
             }
         }
+    }
+
+    private func scheduleRootsTimeout() {
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.rootsTimeout))
+            await self?.rootsTimeoutFired()
+        }
+    }
+
+    private func rootsTimeoutFired() async {
+        guard sparsebundle == nil, !sparsebundleWaiters.isEmpty else { return }
+        slog("gnucash-mcp: roots/list timed out after \(Self.rootsTimeout)s — falling back to default path\n")
+        await attachSparsebundle(path: SparsebundleManager.defaultBundlePath)
     }
 
     // MARK: - Container dispatch

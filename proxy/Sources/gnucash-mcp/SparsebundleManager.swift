@@ -37,13 +37,13 @@ struct SparsebundleManager {
 
     func attachIfNeeded() throws {
         if isMounted {
-            fputs("sparsebundle: already mounted at \(mountPoint)\n", stderr)
+            slog("sparsebundle: already mounted at \(mountPoint)\n")
             return
         }
         guard FileManager.default.fileExists(atPath: bundlePath) else {
             throw SparsebundleError.bundleNotFound(bundlePath)
         }
-        fputs("sparsebundle: attaching \(bundlePath)\n", stderr)
+        slog("sparsebundle: attaching \(bundlePath)\n")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
         process.arguments = ["attach", "-readwrite", "-nobrowse", bundlePath]
@@ -59,20 +59,20 @@ struct SparsebundleManager {
         let err = String(
             data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8,
         ) ?? ""
-        if !out.isEmpty { fputs("sparsebundle: hdiutil stdout: \(out)", stderr) }
-        if !err.isEmpty { fputs("sparsebundle: hdiutil stderr: \(err)", stderr) }
+        if !out.isEmpty { slog("sparsebundle: hdiutil stdout: \(out)") }
+        if !err.isEmpty { slog("sparsebundle: hdiutil stderr: \(err)") }
         guard process.terminationStatus == 0 else {
             throw SparsebundleError.attachFailed(process.terminationStatus)
         }
-        fputs("sparsebundle: mounted at \(mountPoint)\n", stderr)
+        slog("sparsebundle: mounted at \(mountPoint)\n")
     }
 
     func detach() throws {
         guard isMounted else {
-            fputs("sparsebundle: detach skipped — not mounted\n", stderr)
+            slog("sparsebundle: detach skipped — not mounted\n")
             return
         }
-        fputs("sparsebundle: detaching \(mountPoint)\n", stderr)
+        slog("sparsebundle: detaching \(mountPoint)\n")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
         process.arguments = ["detach", mountPoint]
@@ -81,9 +81,9 @@ struct SparsebundleManager {
         try process.run()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
-            fputs("sparsebundle: detach failed (status \(process.terminationStatus))\n", stderr)
+            slog("sparsebundle: detach failed (status \(process.terminationStatus))\n")
             throw SparsebundleError.detachFailed(process.terminationStatus)
         }
-        fputs("sparsebundle: detached \(mountPoint)\n", stderr)
+        slog("sparsebundle: detached \(mountPoint)\n")
     }
 }

@@ -64,13 +64,14 @@ fi
 # Unload LaunchAgent (plist already removed by unregister)
 launchctl unload "$PLIST" 2>/dev/null || true
 
-# Remove binary and app directory
+# Remove binary, resource bundle, and app directory
 if [[ -f "$BINARY" ]]; then
   rm "$BINARY"
   echo "Removed $BINARY"
 else
   echo "Binary not found — skipping"
 fi
+rm -rf "${APPDIR}/gnucash-mcp_gnucash-mcp.bundle"
 rmdir "$APPDIR" 2>/dev/null || true
 
 # Remove gnucash-browse
@@ -87,11 +88,19 @@ echo "Done. Restart Claude Desktop to deregister the server."
 """
 
 [tasks.install-app]
-description = "Build and install gnucash-mcp binary (release), then register with Claude Desktop"
+description = "Build and install gnucash-mcp binary (release), then register with Claude Desktop (or Claude Code via --code)"
 depends = ["build-proxy", "build-worker"]
+usage = '''
+flag "--code" help="Register with Claude Code instead of Claude Desktop"
+'''
 run = """
 set -euo pipefail
 CONFIG="${BUILD_CONFIG:-release}"
+if [[ "${usage_code:-false}" == "true" ]]; then
+  REGISTER_WITH="code"
+else
+  REGISTER_WITH="desktop"
+fi
 APPDIR="$HOME/Library/Application Support/gnucash-mcp"
 BROWSE_DIR="$HOME/.local/bin"
 mkdir -p "${APPDIR}" "${BROWSE_DIR}"
@@ -99,22 +108,59 @@ mkdir -p "${APPDIR}" "${BROWSE_DIR}"
 echo "Installing ${CONFIG} binary to ${APPDIR}/gnucash-mcp…"
 cp "$TMPDIR/gnucash-mcp-build/${CONFIG}/gnucash-mcp" "${APPDIR}/gnucash-mcp"
 chmod +x "${APPDIR}/gnucash-mcp"
+codesign --force --sign - "${APPDIR}/gnucash-mcp"
+
+# SwiftPM emits resources into a sibling .bundle directory; Bundle.module
+# looks for it next to the executable at runtime.
+BUNDLE_NAME="gnucash-mcp_gnucash-mcp.bundle"
+rm -rf "${APPDIR}/${BUNDLE_NAME}"
+cp -R "$TMPDIR/gnucash-mcp-build/${CONFIG}/${BUNDLE_NAME}" "${APPDIR}/${BUNDLE_NAME}"
 
 echo "Installing to ${BROWSE_DIR}/gnucash-browse…"
 cp "$(git rev-parse --show-toplevel)/bin/gnucash-browse" "${BROWSE_DIR}/gnucash-browse"
 chmod +x "${BROWSE_DIR}/gnucash-browse"
+codesign --force --sign - "${BROWSE_DIR}/gnucash-browse"
 
-echo "Registering with Claude Desktop…"
-"${APPDIR}/gnucash-mcp" register --binary-path "${APPDIR}/gnucash-mcp"
+case "$REGISTER_WITH" in
+  desktop)
+    echo "Registering with Claude Desktop…"
+    "${APPDIR}/gnucash-mcp" register --binary-path "${APPDIR}/gnucash-mcp"
+    POST_MSG="Restart Claude Desktop to pick up the new version."
+    ;;
+  code)
+    if ! command -v claude >/dev/null 2>&1; then
+      echo "error: claude CLI not found on PATH" >&2
+      exit 1
+    fi
+    echo "Registering with Claude Code (local scope, this repo)…"
+    claude mcp remove gnucash-myproject -s local >/dev/null 2>&1 || true
+    claude mcp add gnucash-myproject -s local -- "${APPDIR}/gnucash-mcp" start
+    POST_MSG="Reload your Claude Code window to pick up the new server."
+    ;;
+  *)
+    echo "error: REGISTER_WITH must be 'desktop' or 'code' (got: $REGISTER_WITH)" >&2
+    exit 1
+    ;;
+esac
 
 echo ""
-echo "Done. Restart Claude Desktop to pick up the new version."
+echo "Done. $POST_MSG"
 echo "Binary: ${APPDIR}/gnucash-mcp (${CONFIG})"
 """
 
 [tasks.dev-install-app]
 description = "Like install-app but builds a debug binary (3-5x faster; for edit→test loops)"
-run = "BUILD_CONFIG=debug mise run install-app"
+usage = '''
+flag "--code" help="Register with Claude Code instead of Claude Desktop"
+'''
+run = """
+set -euo pipefail
+ARGS=()
+if [[ "${usage_code:-false}" == "true" ]]; then
+  ARGS+=(--code)
+fi
+BUILD_CONFIG=debug mise run install-app "${ARGS[@]}"
+"""
 
 # ── buck2 ─────────────────────────────────────────────────────────────────────
 

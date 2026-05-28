@@ -172,7 +172,7 @@ actor GnuCashContainerClient: PooledContainer {
         let stderrP = Pipe()
 
         let processConfig = ProcessConfiguration(
-            executable: "/usr/bin/python3",
+            executable: "/opt/venv/bin/python3",
             arguments: ["-m", "gnucash_mcp"],
             environment: ["GNUCASH_BOOK_PATH=\(Self.bookPath)"],
             workingDirectory: "/",
@@ -200,7 +200,7 @@ actor GnuCashContainerClient: PooledContainer {
         stdinPipe = stdinP
         stdoutPipe = stdoutP
         stderrPipe = stderrP
-        fputs("container: started \(containerId)\n", stderr)
+        slog("container: started \(containerId)\n")
 
         // Background sentinel: marks container dead if the worker exits before roundTrip.
         // This is the KU-11 sleep/wake guard — a woken-from-sleep container may have been
@@ -244,7 +244,7 @@ actor GnuCashContainerClient: PooledContainer {
 
         try await backend.delete(id: id)
         _isAlive = false
-        fputs("container: exited \(id) status=\(exitCode)\n", stderr)
+        slog("container: exited \(id) status=\(exitCode)\n")
         dlog("container", "← \(id) stdout=\(dlogPreview(response))")
         if !errOutput.isEmpty {
             dlog("container", "← \(id) stderr=\(dlogPreview(errOutput, max: 500))")
@@ -269,7 +269,7 @@ actor GnuCashContainerClient: PooledContainer {
         // delete(force:true) stops the VM if still running, then removes it.
         // This is the reliable path — see comment on LiveManagedContainerBackend.delete.
         try? await backend.delete(id: id)
-        fputs("container: terminated \(id)\n", stderr)
+        slog("container: terminated \(id)\n")
     }
 }
 
