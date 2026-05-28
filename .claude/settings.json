@@ -1,6 +1,7 @@
 {
   "permissions": {
     "allow": [
+      "Bash(swift *)",
       "Bash(xcrun swift:*)",
       "Bash(xcode-select -p)",
       "Bash(uniq done:*)",

@@ -40,16 +40,20 @@ actor MCPStdioTransport {
                 // Incoming messages are either client requests or client responses
                 // to our server-initiated roots/list request.
                 if let request = try? decoder.decode(JSONRPCRequest.self, from: data) {
+                    dlog("mcp", "← request method=\(request.method) id=\(request.id?.intValue.map(String.init) ?? "nil")")
                     let response: JSONRPCResponse?
                     do {
                         response = try await dispatch(request)
                     } catch {
+                        dlog("mcp", "dispatch error for \(request.method): \(error)")
                         response = .failure(id: request.id, code: -32603, message: "\(error)")
                     }
                     if let response { write(response) }
                 } else if let response = try? decoder.decode(JSONRPCResponse.self, from: data) {
+                    dlog("mcp", "← client response id=\(response.id?.intValue.map(String.init) ?? "nil")")
                     await handleClientResponse(response)
                 } else {
+                    dlog("mcp", "parse error on line: \(trimmed.prefix(200))")
                     write(.failure(id: nil, code: -32700, message: "Parse error"))
                 }
             }
@@ -179,6 +183,7 @@ actor MCPStdioTransport {
     // MARK: - Container dispatch
 
     private func containerDispatch(_ request: JSONRPCRequest) async throws -> JSONRPCResponse {
+        let start = Date()
         let sb = try await acquireSparsebundle()
 
         if !backupDone, isWriteMethod(request.method) {
@@ -193,7 +198,10 @@ actor MCPStdioTransport {
         defer { Task { await pool.release() } }
 
         let requestData = try encoder.encode(request)
+        dlog("mcp", "→ container \(request.method) payload=\(dlogPreview(requestData))")
         let responseData = try await client.roundTrip(request: requestData)
+        let elapsedMs = Int(Date().timeIntervalSince(start) * 1000)
+        dlog("mcp", "← container \(request.method) \(elapsedMs)ms payload=\(dlogPreview(responseData))")
         return try decoder.decode(JSONRPCResponse.self, from: responseData)
     }
 
@@ -205,6 +213,7 @@ actor MCPStdioTransport {
 
     private func write(_ response: JSONRPCResponse) {
         if let data = try? encoder.encode(response), let str = String(data: data, encoding: .utf8) {
+            dlog("mcp", "→ response id=\(response.id?.intValue.map(String.init) ?? "nil") payload=\(dlogPreview(data))")
             print(str)
             fflush(stdout)
         }

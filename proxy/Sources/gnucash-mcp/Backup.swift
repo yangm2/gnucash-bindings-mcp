@@ -26,11 +26,14 @@ enum BackupManager {
         let backupName = "\(bookURL.lastPathComponent).pre-\(timestamp).gnucash"
         let backupURL = bookURL.deletingLastPathComponent().appending(component: backupName)
 
+        let start = Date()
         do {
             try FileManager.default.copyItem(at: bookURL, to: backupURL)
         } catch {
             throw BackupError.copyFailed(error)
         }
+        let elapsedMs = Int(Date().timeIntervalSince(start) * 1000)
+        dlog("backup", "\(bookURL.lastPathComponent) → \(backupURL.lastPathComponent) (\(elapsedMs)ms)")
         return backupURL
     }
 

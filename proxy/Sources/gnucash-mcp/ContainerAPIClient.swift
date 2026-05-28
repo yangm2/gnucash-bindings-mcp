@@ -222,6 +222,7 @@ actor GnuCashContainerClient: PooledContainer {
 
     /// Write the request JSON to stdin, close stdin, read the response, await exit, delete.
     func roundTrip(request: Data) async throws -> Data {
+        dlog("container", "→ \(id) stdin=\(dlogPreview(request))")
         stdinPipe.fileHandleForWriting.write(request)
         try stdinPipe.fileHandleForWriting.close()
 
@@ -244,6 +245,10 @@ actor GnuCashContainerClient: PooledContainer {
         try await backend.delete(id: id)
         _isAlive = false
         fputs("container: exited \(id) status=\(exitCode)\n", stderr)
+        dlog("container", "← \(id) stdout=\(dlogPreview(response))")
+        if !errOutput.isEmpty {
+            dlog("container", "← \(id) stderr=\(dlogPreview(errOutput, max: 500))")
+        }
 
         if exitCode != 0 {
             let msg = String(data: errOutput, encoding: .utf8) ?? ""
